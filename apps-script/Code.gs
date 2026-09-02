@@ -102,26 +102,129 @@ function submit_(c) {
     });
     shL.getRange(shL.getLastRow() + 1, 1, rows.length, HEAD_LINES.length).setValues(rows);
 
-    notify_(c);
-    return { ok: true, id: c.id };
+    var mailSent = mailConfirmation_(c);   // e-mail au participant
+    notify_(c);                            // copie a l'organisateur
+    return { ok: true, id: c.id, mailSent: mailSent };
   } finally {
     lock.releaseLock();
   }
 }
 
-// Notification e-mail optionnelle : renseigner la Script Property NOTIFY_EMAIL.
+/* ------------------------------------------------------------ e-mails ---
+ * L'e-mail de confirmation est LE support des coordonnees bancaires : le
+ * depot GitHub etant public, l'IBAN ne vit que dans les Script Properties
+ * (PAY_BENEFICIAIRE / PAY_IBAN) et n'apparait jamais dans la page.
+ */
+
+function money_(n) {
+  return 'CHF ' + Number(n).toFixed(2);
+}
+
+function esc_(t) {
+  return String(t == null ? '' : t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Recapitulatif HTML des lignes commandees, partage par les deux e-mails.
+function tableHtml_(c) {
+  var h = '<table cellpadding="6" cellspacing="0" border="0" style="border-collapse:collapse;font:14px Helvetica,Arial,sans-serif">' +
+    '<tr style="background:#f2e6ea">' +
+    '<th align="left">Réf.</th><th align="left">Vin</th>' +
+    '<th align="right">Cartons</th><th align="right">Bouteilles</th><th align="right">Total TTC</th></tr>';
+  c.lignes.forEach(function (l, i) {
+    h += '<tr style="background:' + (i % 2 ? '#ffffff' : '#fbf9f5') + '">' +
+      '<td>' + esc_(l.ref) + '</td>' +
+      '<td><b>' + esc_(l.nom) + '</b><br><span style="color:#6b6660;font-size:12px">' +
+      esc_(l.appellation) + ' · ' + esc_(l.cl) + ' · ' + esc_(l.mill) + '</span></td>' +
+      '<td align="right">' + l.cartons + ' × ' + (l.btl || Math.round(l.bouteilles / l.cartons)) + '</td>' +
+      '<td align="right">' + l.bouteilles + '</td>' +
+      '<td align="right">' + money_(l.total_ttc) + '</td></tr>';
+  });
+  h += '<tr style="border-top:2px solid #21201d"><td colspan="2"><b>Total</b></td>' +
+    '<td align="right"><b>' + c.total_cartons + '</b></td>' +
+    '<td align="right"><b>' + c.total_bouteilles + '</b></td>' +
+    '<td align="right"><b>' + money_(c.total_ttc) + '</b></td></tr></table>';
+  return h;
+}
+
+// E-mail envoye au participant : recapitulatif + coordonnees de paiement.
+// Renvoie true si l'envoi a reussi (remonte a la page dans la reponse JSON).
+function mailConfirmation_(c) {
+  if (!c.email) return false;
+  var p = props_();
+  var benef = p.getProperty('PAY_BENEFICIAIRE') || '';
+  var iban = p.getProperty('PAY_IBAN') || '';
+  var echeance = p.getProperty('PAY_DEADLINE') || '';
+  var orgName = p.getProperty('ORG_NAME') || 'Commande groupée Noël 2026';
+  var orgMail = p.getProperty('ORG_EMAIL') || '';
+  var enlev = p.getProperty('ENLEVEMENT') ||
+    'du 12.10 au 13.11.2026, sur préavis de min. 72 h au 021 822 02 45';
+  var ref = c.prenom + ' ' + c.nom + ' — ' + c.id;
+
+  var pay = '<h3 style="margin:22px 0 6px">Paiement</h3>' +
+    '<table cellpadding="4" cellspacing="0" border="0" style="font:14px Helvetica,Arial,sans-serif">' +
+    '<tr><td style="color:#6b6660">Montant</td><td><b>' + money_(c.total_ttc) + '</b> (TTC)</td></tr>' +
+    (echeance ? '<tr><td style="color:#6b6660">À payer avant le</td><td><b>' + esc_(echeance) + '</b></td></tr>' : '') +
+    (benef ? '<tr><td style="color:#6b6660">Bénéficiaire</td><td><b>' + esc_(benef) + '</b></td></tr>' : '') +
+    (iban ? '<tr><td style="color:#6b6660">IBAN</td><td><b>' + esc_(iban) + '</b></td></tr>' : '') +
+    '<tr><td style="color:#6b6660">Référence</td><td><b>' + esc_(ref) + '</b></td></tr>' +
+    '</table>' +
+    (benef && iban ? '' :
+      '<p style="color:#a45b12;font:13px Helvetica,Arial,sans-serif">Les coordonnées bancaires ne sont pas encore configurées ' +
+      '(Script Properties PAY_BENEFICIAIRE et PAY_IBAN) — elles vous seront transmises séparément.</p>');
+
+  var html = '<div style="font:15px/1.5 Helvetica,Arial,sans-serif;color:#21201d;max-width:640px">' +
+    '<h2 style="font-family:Georgia,serif;margin:0 0 4px">Commande enregistrée</h2>' +
+    '<p style="color:#6b6660;margin:0 0 18px">' + esc_(c.prenom) + ', voici le récapitulatif de votre commande <b>' + esc_(c.id) + '</b>.</p>' +
+    tableHtml_(c) +
+    '<p style="color:#6b6660;font-size:13px;margin:8px 0 0">Prix TTC, TVA ' +
+    (Math.round((c.tva || 0.081) * 1000) / 10) + ' % incluse, arrondis au 5 centimes supérieur.</p>' +
+    pay +
+    '<h3 style="margin:22px 0 6px">Enlèvement</h3>' +
+    '<p style="margin:0;color:#6b6660">' + esc_(enlev) + '. Sous réserve de disponibilité des stocks.</p>' +
+    '<p style="margin:22px 0 0;color:#6b6660;font-size:13px">Merci d\'indiquer la référence ci-dessus lors du virement, ' +
+    'elle permet de rapprocher votre paiement de votre commande.</p></div>';
+
+  var plain = 'Commande ' + c.id + ' enregistrée.\n\n' +
+    c.lignes.map(function (l) {
+      return l.ref + ' — ' + l.nom + ' : ' + l.cartons + ' carton(s) = ' + l.bouteilles + ' bt. — ' + money_(l.total_ttc);
+    }).join('\n') +
+    '\n\nTotal : ' + c.total_cartons + ' carton(s), ' + c.total_bouteilles + ' bouteilles, ' + money_(c.total_ttc) + ' TTC\n\n' +
+    'PAIEMENT\nMontant : ' + money_(c.total_ttc) +
+    (echeance ? '\nÀ payer avant le : ' + echeance : '') +
+    (benef ? '\nBénéficiaire : ' + benef : '') +
+    (iban ? '\nIBAN : ' + iban : '') +
+    '\nRéférence : ' + ref +
+    '\n\nEnlèvement : ' + enlev + '\n';
+
+  try {
+    var opts = { name: orgName, htmlBody: html };
+    if (orgMail) opts.replyTo = orgMail;
+    MailApp.sendEmail(c.email, 'Noël 2026 — votre commande ' + c.id + ' (' + money_(c.total_ttc) + ')', plain, opts);
+    return true;
+  } catch (e) {
+    // Quota MailApp atteint ou adresse invalide : la commande reste enregistree.
+    Logger.log('mailConfirmation_ : ' + e);
+    return false;
+  }
+}
+
+// Copie a l'organisateur : renseigner la Script Property NOTIFY_EMAIL.
 function notify_(c) {
   var to = props_().getProperty('NOTIFY_EMAIL');
   if (!to) return;
   try {
     MailApp.sendEmail(to,
-      'Noël 2026 — commande de ' + c.prenom + ' ' + c.nom,
-      c.prenom + ' ' + c.nom + ' (' + c.email + ')\n' +
+      'Noël 2026 — commande de ' + c.prenom + ' ' + c.nom + ' (' + money_(c.total_ttc) + ')',
+      c.prenom + ' ' + c.nom + ' (' + c.email + (c.tel ? ', ' + c.tel : '') + ')\n' +
       c.total_cartons + ' carton(s), ' + c.total_bouteilles + ' bouteilles\n' +
-      'Total TTC : CHF ' + c.total_ttc + '\n\n' +
+      'Total TTC : ' + money_(c.total_ttc) + ' — HT : ' + money_(c.total_ht) + '\n\n' +
       c.lignes.map(function (l) {
         return l.ref + ' — ' + l.nom + ' : ' + l.cartons + ' carton(s) = ' + l.bouteilles + ' bt.';
-      }).join('\n'));
+      }).join('\n'),
+      { htmlBody: '<div style="font:15px/1.5 Helvetica,Arial,sans-serif"><p><b>' + esc_(c.prenom + ' ' + c.nom) +
+        '</b><br>' + esc_(c.email) + (c.tel ? ' · ' + esc_(c.tel) : '') + '</p>' + tableHtml_(c) +
+        '<p style="color:#6b6660;font-size:13px">Total HT : ' + money_(c.total_ht) + '</p></div>' });
   } catch (e) { /* l'échec d'un e-mail ne doit pas faire échouer la commande */ }
 }
 
@@ -183,4 +286,10 @@ function setup() {
   Logger.log('ADMIN_USER   : ' + (p.getProperty('ADMIN_USER') || 'admin (défaut)'));
   Logger.log('ADMIN_PASS   : ' + (p.getProperty('ADMIN_PASS') ? 'défini' : '*** MANQUANT ***'));
   Logger.log('NOTIFY_EMAIL : ' + (p.getProperty('NOTIFY_EMAIL') || '(aucune notification)'));
+  Logger.log('PAY_BENEFICIAIRE : ' + (p.getProperty('PAY_BENEFICIAIRE') || '*** MANQUANT ***'));
+  Logger.log('PAY_IBAN     : ' + (p.getProperty('PAY_IBAN') || '*** MANQUANT ***'));
+  Logger.log('PAY_DEADLINE : ' + (p.getProperty('PAY_DEADLINE') || '(aucune échéance)'));
+  Logger.log('ORG_NAME     : ' + (p.getProperty('ORG_NAME') || 'Commande groupée Noël 2026 (défaut)'));
+  Logger.log('ORG_EMAIL    : ' + (p.getProperty('ORG_EMAIL') || '(pas de reply-to)'));
+  Logger.log('Quota e-mails restant aujourd\'hui : ' + MailApp.getRemainingDailyQuota());
 }

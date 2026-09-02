@@ -13,7 +13,11 @@ transmettre à `vente@schenk-wine.ch`.
    référence, colonne `Emb.` du PDF). Total live en bas d'écran.
 3. **Récapitulatif** puis validation : la commande est stockée avec le détail
    ligne par ligne.
-4. **Espace admin** (utilisateur + mot de passe) : toutes les commandes
+4. **E-mail de confirmation** (en production) : le participant reçoit
+   automatiquement le récapitulatif de sa commande avec le montant, le
+   bénéficiaire, l'IBAN, l'échéance et la référence à indiquer au virement.
+   L'organisateur en reçoit une copie s'il a renseigné `NOTIFY_EMAIL`.
+5. **Espace admin** (utilisateur + mot de passe) : toutes les commandes
    individuelles, le **formulaire agrégé** par référence (cartons, nombre de
    bouteilles, totaux), export CSV et impression/PDF.
 
@@ -26,22 +30,17 @@ Schenk facture en HT.
 personne et total groupé sont donc eux aussi des multiples de 0.05, et les
 additions sont vérifiables à la main. Les colonnes HT restent exactes.
 
-## Coordonnées de paiement — à remplir
+## Coordonnées de paiement
 
-`assets/config.js` contient trois valeurs de paiement affichées dans l'en-tête,
-le récapitulatif et la confirmation de commande :
+Elles ne sont **pas** dans ce dépôt. Le bénéficiaire et l'IBAN vivent dans les
+*Script Properties* de l'Apps Script (`PAY_BENEFICIAIRE`, `PAY_IBAN`) et ne
+partent que dans l'e-mail de confirmation envoyé au participant. La page se
+contente d'annoncer l'échéance (`deadlinePaiement` dans `assets/config.js`) et
+que les coordonnées arrivent par e-mail.
 
-```js
-deadlinePaiement: "30.09.2026",
-beneficiaire: "XXXX YYYYY",        // ← à remplacer
-iban: "XXXSBBDSJAKDJSA",           // ← à remplacer
-```
-
-Tant qu'elles ne sont pas remplacées, les participants voient les placeholders.
-Le dépôt étant public, ce sont des coordonnées destinées à être partagées avec
-les dix participants — un IBAN n'est pas un secret, mais il sera visible de tous
-sur GitHub : si ça te gêne, passe le dépôt en privé (GitHub Pages reste
-disponible) ou n'y mets que le nom du bénéficiaire.
+Pour un test en local, on peut remplir `beneficiaire` et `iban` dans
+`assets/config.js` : elles s'affichent alors aussi dans la page — à ne pas
+commiter avec de vraies valeurs.
 
 ## Version locale (aucune installation)
 

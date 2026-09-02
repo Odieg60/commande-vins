@@ -36,6 +36,15 @@
   }
   function slugCouleur(c) { return c === 'rosé' ? 'rose' : c; }
   function pctTVA() { return String(Math.round(TVA * 1000) / 10); }
+  // Les coordonnées bancaires ne sont affichées que si elles sont renseignées
+  // dans config.js. Sinon elles arrivent uniquement par l'e-mail de
+  // confirmation, envoyé par l'Apps Script (dépôt public = pas d'IBAN dedans).
+  function hasPayInfo() { return !!(CFG.beneficiaire && CFG.iban); }
+  function payLine(sep) {
+    return hasPayInfo()
+      ? 'À payer à ' + esc(CFG.beneficiaire) + sep + 'IBAN ' + esc(CFG.iban)
+      : 'Les coordonnées de paiement vous sont envoyées par e-mail après validation.';
+  }
   function norm(s) {
     return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
@@ -286,7 +295,7 @@
     $('recap-note').innerHTML =
       'Total <b>TTC</b> (TVA ' + pctTVA() + ' % incluse, prix arrondis au 5 ct supérieur) : <b>' + chf(t.ttc) + '</b>.<br>' +
       'Commandes jusqu\'au ' + esc(CFG.deadline) + ' · <b>paiement avant le ' + esc(CFG.deadlinePaiement) + '</b>.<br>' +
-      'À payer à ' + esc(CFG.beneficiaire) + ' · IBAN ' + esc(CFG.iban) + '.<br>' +
+      payLine(' · ') + '<br>' +
       'Enlèvement ' + esc(CFG.enlevement) + '.';
   }
 
@@ -340,11 +349,19 @@
       $('done-text').innerHTML = 'Merci ' + esc(state.identite.prenom) + '. Votre commande <b>' + esc(res.id || order.id) +
         '</b> est enregistrée : <b>' + t.cartons + ' carton(s)</b>, ' + t.bouteilles + ' bouteilles, <b>' + chf(t.ttc) + '</b> TTC.' +
         (Store.remote() ? '' : '<br><small>Mode local : la commande est stockée dans ce navigateur uniquement.</small>');
-      $('done-paiement').innerHTML =
-        '<b>Paiement</b> : ' + chf(t.ttc) + ' à verser avant le <b>' + esc(CFG.deadlinePaiement) + '</b><br>' +
-        'Bénéficiaire : <b>' + esc(CFG.beneficiaire) + '</b><br>' +
-        'IBAN : <b>' + esc(CFG.iban) + '</b><br>' +
-        'Référence à indiquer : <b>' + esc(state.identite.prenom + ' ' + state.identite.nom + ' — ' + (res.id || order.id)) + '</b>';
+      var ref = state.identite.prenom + ' ' + state.identite.nom + ' — ' + (res.id || order.id);
+      var pay = '<b>Paiement</b> : ' + chf(t.ttc) + ' à verser avant le <b>' + esc(CFG.deadlinePaiement) + '</b><br>';
+      if (hasPayInfo()) {
+        pay += 'Bénéficiaire : <b>' + esc(CFG.beneficiaire) + '</b><br>' +
+               'IBAN : <b>' + esc(CFG.iban) + '</b><br>';
+      }
+      pay += 'Référence à indiquer : <b>' + esc(ref) + '</b><br>';
+      pay += res.mailSent
+        ? 'Un e-mail récapitulatif avec les coordonnées bancaires vient d\'être envoyé à <b>' + esc(state.identite.email) + '</b>.'
+        : (Store.remote()
+            ? '<span class="muted">L\'e-mail de confirmation n\'a pas pu être envoyé — les coordonnées de paiement te seront transmises directement.</span>'
+            : '<span class="muted">Mode local : aucun e-mail n\'est envoyé. En production, ce récapitulatif part par e-mail avec les coordonnées bancaires.</span>');
+      $('done-paiement').innerHTML = pay;
       $('done-table').innerHTML = tableLignes(lignes(), t);
       state.lignes = {}; saveDraft();
       show('done');
@@ -557,8 +574,7 @@
   function bind() {
     $('mode-badge').textContent = Store.remote() ? 'Google Sheet' : 'local';
     $('h-deadline').textContent = CFG.deadline;
-    $('h-paiement').innerHTML = 'À payer à <b>' + esc(CFG.beneficiaire) + '</b> · IBAN <b>' + esc(CFG.iban) + '</b>' +
-      ' · avant le <b>' + esc(CFG.deadlinePaiement) + '</b>';
+    $('h-paiement').innerHTML = 'Paiement avant le <b>' + esc(CFG.deadlinePaiement) + '</b> · ' + payLine(' · ');
 
     $('btn-to-2').addEventListener('click', function () {
       if (validIdentite()) { renderCatalogue(); show(2); }

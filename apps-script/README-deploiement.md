@@ -21,7 +21,18 @@ Objectif : la page web peut **écrire** les commandes, mais le Google Sheet rest
 | `SHEET_ID` | l'ID du classeur (ou omettre si le script est lié au classeur) | non |
 | `ADMIN_USER` | `admin` (ou autre) | non (défaut `admin`) |
 | `ADMIN_PASS` | le mot de passe admin, connu de toi seul | **oui** |
-| `NOTIFY_EMAIL` | ton e-mail, pour recevoir chaque commande | non |
+| `NOTIFY_EMAIL` | ton e-mail, pour recevoir une copie de chaque commande | non |
+| `PAY_BENEFICIAIRE` | le nom du bénéficiaire du virement | **oui** |
+| `PAY_IBAN` | l'IBAN sur lequel les participants paient | **oui** |
+| `PAY_DEADLINE` | échéance de paiement, ex. `30.09.2026` | non |
+| `ORG_NAME` | nom d'expéditeur affiché, ex. `Commande vins Noël 2026` | non |
+| `ORG_EMAIL` | adresse de réponse (reply-to) des e-mails | non |
+| `ENLEVEMENT` | texte d'enlèvement, si différent du défaut | non |
+
+C'est ici — et **nulle part dans le dépôt GitHub** — que vivent le bénéficiaire
+et l'IBAN : ils ne partent que dans l'e-mail de confirmation envoyé au
+participant. Si `PAY_BENEFICIAIRE` ou `PAY_IBAN` manque, l'e-mail est quand même
+envoyé, avec un avertissement à la place des coordonnées.
 
 4. Lancer une fois la fonction `setup` (menu *Exécuter*) et accepter les
    autorisations. Les onglets `Commandes` et `Lignes` sont créés, et le journal
@@ -54,8 +65,12 @@ Le champ `adminPassLocal` de `config.js` n'est alors plus utilisé — c'est
 
 1. Ouvrir l'URL du Web App dans un navigateur : elle doit répondre
    `{"ok":true,"service":"commande-vins-noel-2026"}`.
-2. Passer une commande de test depuis la page → une ligne apparaît dans
-   `Commandes` et les détails dans `Lignes`.
+2. Passer une commande de test depuis la page (avec ta propre adresse) → une
+   ligne apparaît dans `Commandes`, les détails dans `Lignes`, et tu reçois
+   l'e-mail de confirmation avec les coordonnées de paiement. La page affiche
+   « Un e-mail récapitulatif … vient d'être envoyé » uniquement si l'envoi a
+   réussi. Quota Gmail : 100 e-mails/jour sur un compte gratuit, largement
+   suffisant pour dix personnes (le quota restant est affiché par `setup`).
 3. Espace **Admin** → se connecter avec `ADMIN_USER` / `ADMIN_PASS` → le
    formulaire agrégé se remplit.
 4. Supprimer les lignes de test dans le Sheet.

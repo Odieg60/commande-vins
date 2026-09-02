@@ -26,12 +26,16 @@ window.CONFIG = {
   // (30.09.2026), le temps d'agréger et de transmettre la commande groupée.
   deadline: "25.09.2026",
 
-  // Paiement : à REMPLIR avec le vrai bénéficiaire et le vrai IBAN.
-  // Ces deux valeurs s'affichent dans l'en-tête, le récapitulatif et la
-  // confirmation de commande.
+  // Échéance de paiement, affichée dans la page.
   deadlinePaiement: "30.09.2026",
-  beneficiaire: "XXXX YYYYY",
-  iban: "XXXSBBDSJAKDJSA",
+
+  // Bénéficiaire et IBAN. LAISSER VIDE en production : le dépôt est public, et
+  // les vraies coordonnées vivent dans les Script Properties de l'Apps Script
+  // (PAY_BENEFICIAIRE / PAY_IBAN), qui les envoie dans l'e-mail de confirmation.
+  // Si on les remplit ici, elles s'affichent aussi dans la page — pratique pour
+  // tester en local, à ne pas commiter avec de vraies valeurs.
+  beneficiaire: "",
+  iban: "",
 
   enlevement: "du 12.10 au 13.11.2026, sur préavis de min. 72 h au 021 822 02 45",
   contact: "vente@schenk-wine.ch"
