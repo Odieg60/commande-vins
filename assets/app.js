@@ -475,6 +475,42 @@
     return h;
   }
 
+  // Bouton de test : efface les commandes et le brouillon de CE navigateur.
+  // Visible uniquement en mode local — en mode Google Sheet il n'y a rien à
+  // effacer côté navigateur, et surtout rien à supprimer côté serveur d'ici.
+  var resetArmed = 0;
+  function resetLocal() {
+    var btn = $('btn-reset'), msg = $('reset-msg');
+    if (Date.now() - resetArmed > 6000) {          // 1er clic : on arme
+      resetArmed = Date.now();
+      btn.textContent = 'Confirmer la suppression ?';
+      btn.classList.add('primary');
+      msg.textContent = 'Efface les commandes et le brouillon de ce navigateur. Irréversible.';
+      setTimeout(function () {
+        if (Date.now() - resetArmed >= 6000) {
+          btn.textContent = 'Vider les données locales';
+          btn.classList.remove('primary');
+          msg.textContent = '';
+        }
+      }, 6100);
+      return;
+    }
+    resetArmed = 0;                                 // 2e clic : on efface
+    var n = Store.localAll().length;
+    try {
+      localStorage.removeItem(LS_ORDERS);
+      localStorage.removeItem(LS_DRAFT);
+    } catch (e) { /* navigation privée */ }
+    state.lignes = {};
+    state.identite = { prenom: '', nom: '', email: '', tel: '' };
+    fillIdentite();
+    adminData = [];
+    btn.textContent = 'Vider les données locales';
+    btn.classList.remove('primary');
+    renderAdmin();
+    $('reset-msg').textContent = n + ' commande(s) et le brouillon ont été supprimés de ce navigateur.';
+  }
+
   function csv(rows, name) {
     var body = rows.map(function (r) {
       return r.map(function (c) {
@@ -570,9 +606,11 @@
     $('btn-csv-agg').addEventListener('click', csvAgg);
     $('btn-csv-det').addEventListener('click', csvDet);
     $('btn-print-admin').addEventListener('click', function () { window.print(); });
+    $('btn-reset').classList.toggle('hidden', Store.remote());
+    $('btn-reset').addEventListener('click', resetLocal);
     document.querySelector('.tabs').addEventListener('click', function (ev) {
       var b = ev.target.closest('button[data-tab]');
-      if (b) { adminTab = b.dataset.tab; renderAdmin(); }
+      if (b) { adminTab = b.dataset.tab; $('reset-msg').textContent = ''; renderAdmin(); }
     });
   }
 

@@ -33,6 +33,9 @@ Ouvrir `index.html` dans un navigateur (double-clic suffit).
 - Les commandes sont stockées dans le `localStorage` du navigateur.
 - Admin : `admin` / `noel2026` (défini dans `assets/config.js`).
 - Une sélection en cours est conservée si on ferme l'onglet.
+- Bouton **Vider les données locales** dans l'espace admin (deux clics pour
+  confirmer) : efface les commandes de test et le brouillon de ce navigateur.
+  Il n'apparaît qu'en mode local.
 
 Pour tester à plusieurs sur le réseau local :
 
