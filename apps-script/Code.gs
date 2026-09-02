@@ -65,6 +65,7 @@ function doPost(e) {
     switch (body.action) {
       case 'submit': return json_(submit_(body.commande, body.code));
       case 'list': return json_(list_(body.user, body.pass));
+      case 'check': return json_(checkCode_(body.code));
       default: return json_({ ok: false, error: 'Action inconnue.' });
     }
   } catch (err) {
@@ -137,8 +138,9 @@ function validate_(c) {
   return null;
 }
 
-function submit_(c, code) {
-  // Code d'invitation : premier controle, avant toute ecriture et tout e-mail.
+// Verifie le seul code d'invitation, sans rien ecrire : permet a la page de
+// bloquer des l'etape 1 au lieu d'attendre la validation de la commande.
+function checkCode_(code) {
   var attendu = String(props_().getProperty('SUBMIT_CODE') || '').trim();
   if (!attendu) {
     return { ok: false, codeError: true, error: 'Commandes momentanément fermées (code d\'invitation non configuré).' };
@@ -146,6 +148,13 @@ function submit_(c, code) {
   if (String(code || '').trim().toLowerCase() !== attendu.toLowerCase()) {
     return { ok: false, codeError: true, error: 'Code d\'invitation invalide — utilisez le lien qui vous a été envoyé.' };
   }
+  return { ok: true };
+}
+
+function submit_(c, code) {
+  // Code d'invitation : premier controle, avant toute ecriture et tout e-mail.
+  var vu = checkCode_(code);
+  if (!vu.ok) return vu;
 
   var err = validate_(c);
   if (err) return { ok: false, error: err };

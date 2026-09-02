@@ -116,6 +116,7 @@
     lignes: {},            // { ref: nbCartons }
     filtres: { q: '', groupe: '', couleur: '', onlyPicked: false },
     code: CODE_URL,        // code d'invitation (URL, sinon champ de secours)
+    codeOk: null,          // null = pas encore verifie, true/false = reponse serveur
     identiteOk: false,     // l'étape 1 doit être validée avant les étapes 2 et 3
     step: 1
   };
@@ -189,6 +190,12 @@
         return Promise.resolve({ ok: true, id: order.id, mode: 'local' });
       }
       return this.post({ action: 'submit', code: state.code, commande: order });
+    },
+
+    // Verifie le code sans rien ecrire (blocage immediat a l'etape 1).
+    check: function (code) {
+      if (!this.remote()) return Promise.resolve({ ok: true });
+      return this.post({ action: 'check', code: code });
     },
 
     list: function (user, pass) {
@@ -281,6 +288,18 @@
     var i = state.identite;
     return !!(i.prenom && i.nom && !analyseEmail(i.email).erreur &&
       (!Store.remote() || state.code));
+  }
+
+  function erreurCode(msg) {
+    state.code = '';
+    state.codeOk = false;
+    state.identiteOk = false;
+    saveDraft();
+    $('grp-code').classList.remove('hidden');
+    $('f-code').value = '';
+    $('e-code').textContent = msg;
+    show(1);
+    $('f-code').focus();
   }
 
   /* ------------------------------ étape 2 -------------------------------- */
@@ -448,18 +467,7 @@
     $('submit-err').textContent = '';
     var order = makeOrder();
     Store.submit(order).then(function (res) {
-      if (res && res.codeError) {
-        // Code refuse : on ramene la personne a l'etape 1, champ visible et pret.
-        state.code = '';
-        state.identiteOk = false;
-        saveDraft();
-        $('grp-code').classList.remove('hidden');
-        $('e-code').textContent = res.error;
-        $('f-code').value = '';
-        show(1);
-        $('f-code').focus();
-        return;
-      }
+      if (res && res.codeError) { erreurCode(res.error); return; }
       if (!res || !res.ok) throw new Error((res && res.error) || 'Réponse inattendue du serveur.');
       var t = totaux(lignes());
       $('done-text').innerHTML = 'Merci ' + esc(state.identite.prenom) + '. Votre commande <b>' + esc(res.id || order.id) +
@@ -722,13 +730,28 @@
     // Le champ n'apparait que si le code n'est pas deja dans l'URL (ni memorise).
     $('grp-code').classList.toggle('hidden', !Store.remote() || !!state.code);
     $('f-code').addEventListener('input', function () {
-      state.code = this.value.trim(); saveDraft();
+      state.code = this.value.trim();
+      state.codeOk = null;                   // nouveau code : a revalider
+      $('e-code').textContent = '';
+      saveDraft();
     });
     $('h-deadline').textContent = CFG.deadline;
     $('h-paiement').innerHTML = 'Paiement avant le <b>' + esc(CFG.deadlinePaiement) + '</b> · ' + payLine(' · ');
 
     $('btn-to-2').addEventListener('click', function () {
-      if (validIdentite()) { renderCatalogue(); show(2); }
+      if (!validIdentite()) return;
+      if (!Store.remote() || state.codeOk === true) { renderCatalogue(); show(2); return; }
+      var b = this, texte = b.textContent;
+      b.disabled = true; b.textContent = 'Vérification du code…';
+      Store.check(state.code).then(function (r) {
+        if (r && r.ok) { state.codeOk = true; renderCatalogue(); show(2); }
+        else if (r && r.codeError) { erreurCode(r.error); }
+        else { renderCatalogue(); show(2); }   // serveur muet : le submit tranchera
+      }).catch(function () {
+        renderCatalogue(); show(2);           // hors ligne : on n'enferme personne
+      }).then(function () {
+        b.disabled = false; b.textContent = texte;
+      });
     });
     $('btn-back-1').addEventListener('click', function () { show(1); });
     $('btn-to-3').addEventListener('click', function () { renderRecap(); show(3); });
@@ -815,6 +838,12 @@
   // Le code arrive dans l'URL : on le memorise tout de suite, pour qu'un simple
   // rechargement (sans ?c=) ne le perde pas.
   if (CODE_URL) saveDraft();
+  if (Store.remote() && state.code) {
+    Store.check(state.code).then(function (r) {
+      if (r && r.ok) state.codeOk = true;
+      else if (r && r.codeError) erreurCode(r.error);
+    }).catch(function () { /* hors ligne : on verifiera au clic */ });
+  }
   state.identiteOk = identiteComplete();
   bind();
   renderCatalogue();
