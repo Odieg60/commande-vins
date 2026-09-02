@@ -79,6 +79,32 @@ function doGet() {
 
 /* ---------------------------------------------------------------- écriture */
 
+// Meme controle d'e-mail que la page, refait ici : sans adresse exploitable, la
+// commande est inutilisable (aucun moyen d'envoyer les coordonnees de paiement).
+var DOMAINES_JETABLES_ = ['example.com', 'example.org', 'example.net', 'exemple.com',
+  'exemple.fr', 'test.com', 'test.ch', 'test.fr', 'toto.com', 'aaa.com', 'azerty.com',
+  'mailinator.com', 'yopmail.com', 'yopmail.fr', 'jetable.org', 'trashmail.com',
+  'guerrillamail.com', 'sharklasers.com', '10minutemail.com', 'tempmail.com',
+  'temp-mail.org', 'dispostable.com', 'maildrop.cc', 'fakemail.net', 'mailnesia.com'];
+
+function emailValide_(brut) {
+  var v = String(brut || '').trim().replace(/\s+/g, '');
+  if (!v) return { erreur: 'E-mail obligatoire.' };
+  if (v.length > 254) return { erreur: 'E-mail trop long.' };
+  if ((v.match(/@/g) || []).length !== 1) return { erreur: 'E-mail invalide.' };
+  var part = v.split('@'), local = part[0], dom = part[1].toLowerCase();
+  v = local + '@' + dom;
+  if (!local || local.length > 64) return { erreur: 'E-mail invalide.' };
+  if (!/^[A-Za-z0-9!#$%&'*+\/=?^_`{|}~.-]+$/.test(local) || /^\.|\.$|\.\./.test(local)) {
+    return { erreur: 'E-mail invalide.' };
+  }
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,24}$/.test(dom) || /\.\.|^-|-$/.test(dom)) {
+    return { erreur: 'Domaine e-mail invalide.' };
+  }
+  if (DOMAINES_JETABLES_.indexOf(dom) !== -1) return { erreur: 'Adresse de test ou jetable refusée.' };
+  return { valeur: v, erreur: null };
+}
+
 // Cherche un ID de commande dans la premiere colonne de l'onglet Commandes.
 function exists_(sh, id) {
   if (!id) return false;
@@ -98,7 +124,9 @@ function validate_(c) {
   if (!c) return 'Commande absente.';
   if (!String(c.prenom || '').trim()) return 'Prénom obligatoire.';
   if (!String(c.nom || '').trim()) return 'Nom obligatoire.';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(c.email || '').trim())) return 'E-mail invalide.';
+  var mail = emailValide_(c.email);
+  if (mail.erreur) return mail.erreur;
+  c.email = mail.valeur;
   if (!c.lignes || !c.lignes.length) return 'Commande vide.';
   for (var i = 0; i < c.lignes.length; i++) {
     var l = c.lignes[i];
@@ -194,7 +222,7 @@ function mailConfirmation_(c) {
   var orgName = p.getProperty('ORG_NAME') || 'Commande groupée Noël 2026';
   var orgMail = p.getProperty('ORG_EMAIL') || '';
   var enlev = p.getProperty('ENLEVEMENT') ||
-    'du 12.10 au 13.11.2026, sur préavis de min. 72 h au 021 822 02 45';
+    'du 12.10 au 13.11.2026, sur préavis de min. 72 h';
   var ref = c.prenom + ' ' + c.nom + ' — ' + c.id;
 
   var pay = '<h3 style="margin:22px 0 6px">Paiement</h3>' +

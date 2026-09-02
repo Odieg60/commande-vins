@@ -10,6 +10,14 @@ transmettre à `vente@schenk-wine.ch`.
    optionnel). Sans eux, pas d'accès au catalogue ni au récapitulatif, et le
    contrôle est refait côté serveur : une requête forgée sans coordonnées
    valides est rejetée par l'Apps Script.
+
+   L'e-mail est vérifié sérieusement, puisque c'est le seul moyen de joindre la
+   personne : syntaxe stricte (un seul `@`, domaine réel avec extension de 2 à
+   24 lettres, pas de point en début/fin ni de double point), nettoyage
+   automatique (espaces, `mailto:`, domaine en minuscules), refus des adresses
+   de test et jetables (`example.com`, `test.com`, `yopmail`, `mailinator`…) et
+   détection des fautes de frappe courantes — `ludi@gmial.com` propose
+   `ludi@gmail.com` en un clic. Les mêmes règles sont appliquées côté serveur.
 2. **Choix des vins** — les 144 références du PDF, groupées par domaine/région,
    avec recherche, filtres couleur et domaine. Les quantités se choisissent
    **uniquement par carton entier** (6, 12, 24 ou 3 bouteilles selon la

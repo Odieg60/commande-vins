@@ -49,6 +49,60 @@
     return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
+  /* -------------------------- validation e-mail --------------------------
+   * Objectif : eviter les adresses fantaisistes ou mal tapees, sinon la
+   * personne ne recoit jamais ses coordonnees de paiement et sa commande est
+   * inexploitable (l'e-mail est la seule facon de la joindre).
+   */
+  var DOMAINES_JETABLES = [
+    'example.com', 'example.org', 'example.net', 'exemple.com', 'exemple.fr',
+    'test.com', 'test.ch', 'test.fr', 'toto.com', 'aaa.com', 'azerty.com',
+    'mailinator.com', 'yopmail.com', 'yopmail.fr', 'jetable.org', 'trashmail.com',
+    'guerrillamail.com', 'sharklasers.com', '10minutemail.com', 'tempmail.com',
+    'temp-mail.org', 'dispostable.com', 'maildrop.cc', 'fakemail.net', 'mailnesia.com'
+  ];
+
+  // Fautes de frappe courantes sur les domaines suisses et grand public.
+  var CORRECTIONS = {
+    'gmail.co': 'gmail.com', 'gmail.cm': 'gmail.com', 'gmail.con': 'gmail.com',
+    'gmial.com': 'gmail.com', 'gmai.com': 'gmail.com', 'gmali.com': 'gmail.com',
+    'gnail.com': 'gmail.com', 'gmail.fr': 'gmail.com', 'gamil.com': 'gmail.com',
+    'hotmial.com': 'hotmail.com', 'hotmai.com': 'hotmail.com', 'hotmal.com': 'hotmail.com',
+    'hotmail.co': 'hotmail.com', 'hotmailcom': 'hotmail.com',
+    'outlok.com': 'outlook.com', 'outllok.com': 'outlook.com', 'outloo.com': 'outlook.com',
+    'yaho.com': 'yahoo.com', 'yahou.com': 'yahoo.com', 'yaho.fr': 'yahoo.fr',
+    'bluwin.ch': 'bluewin.ch', 'bluewin.c': 'bluewin.ch', 'bluewn.ch': 'bluewin.ch',
+    'bluewin.cj': 'bluewin.ch', 'sunrise.c': 'sunrise.ch', 'netplu.ch': 'netplus.ch',
+    'ikmail.com': 'icloud.com', 'iclou.com': 'icloud.com', 'icloud.co': 'icloud.com'
+  };
+
+  // Renvoie { valeur, erreur, suggestion } — valeur est l'adresse nettoyee.
+  function analyseEmail(brut) {
+    var v = String(brut || '').trim().replace(/\s+/g, '').replace(/^mailto:/i, '');
+    if (!v) return { valeur: '', erreur: 'E-mail obligatoire.' };
+    if (v.length > 254) return { valeur: v, erreur: 'E-mail trop long.' };
+    if ((v.match(/@/g) || []).length !== 1) return { valeur: v, erreur: 'L\'e-mail doit contenir un seul « @ ».' };
+
+    var part = v.split('@');
+    var local = part[0], domaine = part[1].toLowerCase();
+    v = local + '@' + domaine;
+
+    if (!local || local.length > 64) return { valeur: v, erreur: 'Partie avant le « @ » invalide.' };
+    if (!/^[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+$/.test(local) || /^\.|\.$|\.\./.test(local)) {
+      return { valeur: v, erreur: 'Caractère non autorisé avant le « @ ».' };
+    }
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,24}$/.test(domaine) || /\.\.|^-|-$/.test(domaine)) {
+      return { valeur: v, erreur: 'Domaine invalide (exemple attendu : prenom.nom@bluewin.ch).' };
+    }
+    if (CORRECTIONS[domaine]) {
+      return { valeur: v, erreur: 'Domaine probablement mal tapé.', suggestion: local + '@' + CORRECTIONS[domaine] };
+    }
+    if (DOMAINES_JETABLES.indexOf(domaine) !== -1) {
+      return { valeur: v, erreur: 'Adresse de test ou jetable refusée : sans e-mail valable, vous ne recevrez pas les coordonnées de paiement.' };
+    }
+    return { valeur: v, erreur: null };
+  }
+
   /* ------------------------------- état ---------------------------------- */
   var state = {
     identite: { prenom: '', nom: '', email: '', tel: '' },
@@ -189,7 +243,16 @@
     $('e-prenom').textContent = ''; $('e-nom').textContent = ''; $('e-email').textContent = '';
     if (!i.prenom) { $('e-prenom').textContent = 'Prénom obligatoire.'; ok = false; }
     if (!i.nom) { $('e-nom').textContent = 'Nom obligatoire.'; ok = false; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(i.email)) { $('e-email').textContent = 'E-mail invalide.'; ok = false; }
+    var m = analyseEmail(i.email);
+    if (m.valeur !== i.email) {                 // on nettoie ce qui a ete saisi
+      i.email = m.valeur; $('f-email').value = m.valeur; saveDraft();
+    }
+    if (m.erreur) {
+      $('e-email').innerHTML = esc(m.erreur) +
+        (m.suggestion ? ' Vouliez-vous dire <a href="#" data-fix="' + esc(m.suggestion) + '">' +
+          esc(m.suggestion) + '</a> ?' : '');
+      ok = false;
+    }
     state.identiteOk = ok;
     return ok;
   }
@@ -198,7 +261,7 @@
   // avant l'envoi).
   function identiteComplete() {
     var i = state.identite;
-    return !!(i.prenom && i.nom && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(i.email));
+    return !!(i.prenom && i.nom && !analyseEmail(i.email).erreur);
   }
 
   /* ------------------------------ étape 2 -------------------------------- */
@@ -621,7 +684,8 @@
 
   /* ------------------------------ événements ----------------------------- */
   function bind() {
-    $('mode-badge').textContent = Store.remote() ? 'Google Sheet' : 'local';
+    // Le badge n'a d'utilite qu'en local (pour ne pas croire qu'on ecrit en base).
+    $('mode-badge').classList.toggle('hidden', Store.remote());
     $('h-deadline').textContent = CFG.deadline;
     $('h-paiement').innerHTML = 'Paiement avant le <b>' + esc(CFG.deadlinePaiement) + '</b> · ' + payLine(' · ');
 
@@ -647,6 +711,15 @@
         readIdentite();
         state.identiteOk = identiteComplete();
       });
+    });
+
+    $('e-email').addEventListener('click', function (ev) {
+      var a = ev.target.closest('a[data-fix]');
+      if (!a) return;
+      ev.preventDefault();
+      $('f-email').value = a.dataset.fix;
+      readIdentite();
+      validIdentite();
     });
 
     $('f-search').addEventListener('input', function () { state.filtres.q = this.value; renderCatalogue(); });
