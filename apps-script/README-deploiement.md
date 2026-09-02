@@ -75,6 +75,14 @@ Le champ `adminPassLocal` de `config.js` n'est alors plus utilisé — c'est
    formulaire agrégé se remplit.
 4. Supprimer les lignes de test dans le Sheet.
 
+## Idempotence
+
+Si la même commande est envoyée deux fois (double-clic, renvoi après un timeout
+réseau), l'Apps Script détecte que l'ID de commande existe déjà dans l'onglet
+`Commandes` : il n'écrit rien, ne renvoie pas d'e-mail, et répond
+`{"ok":true,"duplicate":true}`. La page affiche alors « cette commande était
+déjà enregistrée ».
+
 ## Notes
 
 - **Après chaque modification de `Code.gs`**, refaire *Déployer > Gérer les

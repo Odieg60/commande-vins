@@ -377,11 +377,17 @@
                'IBAN : <b>' + esc(CFG.iban) + '</b><br>';
       }
       pay += 'Référence à indiquer : <b>' + esc(ref) + '</b><br>';
-      pay += res.mailSent
-        ? 'Un e-mail récapitulatif avec les coordonnées bancaires vient d\'être envoyé à <b>' + esc(state.identite.email) + '</b>.'
-        : (Store.remote()
-            ? '<span class="muted">L\'e-mail de confirmation n\'a pas pu être envoyé — les coordonnées de paiement te seront transmises directement.</span>'
-            : '<span class="muted">Mode local : aucun e-mail n\'est envoyé. En production, ce récapitulatif part par e-mail avec les coordonnées bancaires.</span>');
+      if (res.duplicate) {
+        // Le serveur a reconnu un ID deja enregistre : rien n'a ete duplique.
+        pay += '<span class="muted">Cette commande était déjà enregistrée — rien n\'a été dupliqué, ' +
+               'et l\'e-mail de confirmation est parti lors du premier enregistrement.</span>';
+      } else {
+        pay += res.mailSent
+          ? 'Un e-mail récapitulatif avec les coordonnées bancaires vient d\'être envoyé à <b>' + esc(state.identite.email) + '</b>.'
+          : (Store.remote()
+              ? '<span class="muted">L\'e-mail de confirmation n\'a pas pu être envoyé — les coordonnées de paiement te seront transmises directement.</span>'
+              : '<span class="muted">Mode local : aucun e-mail n\'est envoyé. En production, ce récapitulatif part par e-mail avec les coordonnées bancaires.</span>');
+      }
       $('done-paiement').innerHTML = pay;
       $('done-table').innerHTML = tableLignes(lignes(), t);
       state.lignes = {}; saveDraft();

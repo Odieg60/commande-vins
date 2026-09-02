@@ -79,6 +79,18 @@ function doGet() {
 
 /* ---------------------------------------------------------------- écriture */
 
+// Cherche un ID de commande dans la premiere colonne de l'onglet Commandes.
+function exists_(sh, id) {
+  if (!id) return false;
+  var last = sh.getLastRow();
+  if (last < 2) return false;
+  var col = sh.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = 0; i < col.length; i++) {
+    if (String(col[i][0]) === String(id)) return true;
+  }
+  return false;
+}
+
 // L'etape 1 est obligatoire cote serveur aussi : une requete forgee sans
 // coordonnees valides est refusee, sinon le Sheet se remplit de lignes
 // inexploitables (impossible de savoir a qui facturer ni ou envoyer l'e-mail).
@@ -107,6 +119,13 @@ function submit_(c) {
     var shO = tab_(SHEET_ORDERS, HEAD_ORDERS);
     var shL = tab_(SHEET_LINES, HEAD_LINES);
     var when = c.date ? new Date(c.date) : new Date();
+
+    // Idempotence : si l'ID de commande est deja dans le Sheet, on ne reecrit
+    // rien et on ne renvoie pas d'e-mail. Cela couvre le double-clic et le
+    // renvoi apres un timeout reseau, ou la page reutilise le meme ID.
+    if (exists_(shO, c.id)) {
+      return { ok: true, id: c.id, duplicate: true, mailSent: false };
+    }
 
     shO.appendRow([c.id, when, c.prenom, c.nom, c.email, c.tel || '',
       c.total_cartons, c.total_bouteilles, c.total_ht,
