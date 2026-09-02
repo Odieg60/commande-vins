@@ -9,7 +9,7 @@ window.CONFIG = {
   // En production : coller ici l'URL du Web App Google Apps Script
   // (voir apps-script/README-deploiement.md), du type
   // "https://script.google.com/macros/s/AKfycb..../exec"
-  endpoint: "https://script.google.com/macros/s/AKfycbyLVUJQ8Teuqu4ih_72cuQX5Y7d9Ve-ZSVbZylZAo7wD_OkAhif2yXIQgYzpBp8nszW/exec",
+  endpoint: "https://script.google.com/macros/s/AKfycbzxj2U-uEnIYhyDfaUBvudJcW2AFXhgKWyJNBWslyY2ZpnNMsrdu3siu3d1A0kX9b7U/exec",
 
   // TVA suisse appliquée aux prix HT du PDF Schenk (« TVA non comprise »).
   tva: 0.081,
