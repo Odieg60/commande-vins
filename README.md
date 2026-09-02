@@ -19,9 +19,9 @@ transmettre à `vente@schenk-wine.ch`.
    détection des fautes de frappe courantes — `ludi@gmial.com` propose
    `ludi@gmail.com` en un clic. Les mêmes règles sont appliquées côté serveur.
 2. **Choix des vins** — les 144 références du PDF, groupées par domaine/région,
-   avec recherche, filtres couleur et domaine. Les quantités se choisissent
-   **uniquement par carton entier** (6, 12, 24 ou 3 bouteilles selon la
-   référence, colonne `Emb.` du PDF). Total live en bas d'écran.
+   avec recherche, filtres couleur et domaine, et **cartons entiers ou
+   bouteilles seules** (voir ci-dessous). Total live en bas d'écran, séparant ce
+   qui est à payer de ce qui est en attente.
 3. **Récapitulatif** puis validation : la commande est stockée avec le détail
    ligne par ligne.
 4. **E-mail de confirmation** (en production) : le participant reçoit
@@ -40,6 +40,30 @@ Schenk facture en HT.
 (usage suisse). Tous les autres montants en découlent — sous-totaux, totaux par
 personne et total groupé sont donc eux aussi des multiples de 0.05, et les
 additions sont vérifiables à la main. Les colonnes HT restent exactes.
+
+## Cartons ouverts (commande à la bouteille)
+
+Schenk ne livre qu'en cartons entiers, mais chacun peut ne prendre que quelques
+bouteilles d'une référence : elles **ouvrent un carton** que le groupe complète.
+
+- La ligne affiche pour tout le monde `Carton ouvert 2/6 · il manque 4 bt. ·
+  Marc (2)` avec un bouton **Compléter (4)**. Un filtre **Cartons ouverts** ne
+  montre que ces références, et **Actualiser** recharge l'état du groupe.
+- Les bouteilles seules sont **en attente** tant que le carton n'est pas plein :
+  affichées et facturées entre parenthèses, donc **pas à payer**.
+- **Premier arrivé, premier servi** : sur une référence, les bouteilles les plus
+  anciennes sont confirmées d'abord.
+- Quand une commande **boucle** un carton, les autres participants de ce carton
+  reçoivent un e-mail « carton bouclé » avec le **complément à payer**.
+- À la clôture, un carton resté incomplet **n'est pas commandé** : ces
+  bouteilles ne sont ni livrées ni facturées. L'espace admin les signale en
+  rouge et les exclut du formulaire à transmettre.
+- Au-delà d'un carton, ce sont des cartons : le compteur « bouteilles seules »
+  est plafonné à `bt/carton − 1`, côté page comme côté serveur.
+
+L'état des cartons ouverts est une photo à l'instant du chargement : deux
+personnes qui commandent en même temps ne se voient pas. Ça ne casse rien —
+4 + 4 bouteilles donnent 1 carton + 2 en attente.
 
 ## Code d'invitation
 
@@ -113,7 +137,5 @@ apps-script/README-deploiement.md  procédure de mise en production
 
 - Commandes jusqu'au **30.09.2026** (l'app annonce le **25.09.2026** aux
   participants, pour laisser le temps d'agréger et de transmettre).
-- Enlèvement du **12.10 au 13.11.2026**, sur préavis de min. 72 h au 021 822 02 45.
 - Sites : Rolle, Vevey, Waltenschwil, Chamoson, Sion, Penthalaz.
 - Paiement à 30 jours nets après enlèvement, au plus tard le 18.12.2026.
-- Sous réserve de disponibilité des stocks.

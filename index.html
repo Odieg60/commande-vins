@@ -73,8 +73,10 @@
   <!-- ÉTAPE 2 -->
   <section id="view-2" class="view hidden">
     <div class="note" style="margin-bottom:14px">
-      Les quantités se choisissent <b>uniquement par carton entier</b> (6, 12, 24 ou 3 bouteilles selon la référence).
-      Les prix affichés sont <b>TTC</b>, TVA <span id="tva-label">8.1</span>% incluse, <b>arrondis au 5 centimes supérieur</b>.
+      Prix <b>TTC</b>, TVA <span id="tva-label">8.1</span>% incluse, arrondis au 5 centimes supérieur.<br>
+      Vous pouvez prendre des <b>cartons entiers</b> (6, 12, 24 ou 3 bouteilles selon la référence) ou seulement
+      <b>quelques bouteilles</b> : elles ouvrent un carton que le groupe peut compléter. Une bouteille dans un carton
+      resté incomplet n'est <b>pas commandée et pas facturée</b> — les montants en attente sont entre parenthèses.
     </div>
 
     <div class="toolbar">
@@ -98,6 +100,14 @@
       <div class="f" style="flex:0 0 auto">
         <label>&nbsp;</label>
         <button class="ghost" id="btn-only-picked">Ma sélection</button>
+      </div>
+      <div class="f" style="flex:0 0 auto">
+        <label>&nbsp;</label>
+        <button class="ghost" id="btn-open-only">Cartons ouverts</button>
+      </div>
+      <div class="f" style="flex:0 0 auto">
+        <label>&nbsp;</label>
+        <button class="ghost" id="btn-refresh-etat" title="Recharger les cartons ouverts du groupe">Actualiser</button>
       </div>
     </div>
 
@@ -192,7 +202,8 @@
       <div class="fig"><b id="t-cartons">0</b><span>cartons</span></div>
       <div class="fig"><b id="t-bouteilles">0</b><span>bouteilles</span></div>
       <div class="fig"><b id="t-refs">0</b><span>références</span></div>
-      <div class="fig big"><b id="t-total">CHF 0.00</b><span>total TTC</span></div>
+      <div class="fig big"><b id="t-total">CHF 0.00</b><span>à payer TTC</span></div>
+      <div class="fig hidden att" id="fig-attente"><b id="t-attente">(CHF 0.00)</b><span><span id="t-attente-n">0</span> bt. en attente</span></div>
     </div>
     <button class="ghost" id="btn-back-1">← Coordonnées</button>
     <button class="primary" id="btn-to-3">Voir le récapitulatif →</button>

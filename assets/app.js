@@ -114,7 +114,8 @@
   var state = {
     identite: { prenom: '', nom: '', email: '', tel: '' },
     lignes: {},            // { ref: nbCartons }
-    filtres: { q: '', groupe: '', couleur: '', onlyPicked: false },
+    filtres: { q: '', groupe: '', couleur: '', onlyPicked: false, onlyOpen: false },
+    etat: {},              // cartons ouverts du groupe, par référence
     code: CODE_URL,        // code d'invitation (URL, sinon champ de secours)
     codeOk: null,          // null = pas encore verifie, true/false = reponse serveur
     identiteOk: false,     // l'étape 1 doit être validée avant les étapes 2 et 3
@@ -137,21 +138,53 @@
     } catch (e) { /* quota / navigation privée : sans conséquence */ }
   }
 
+  /* --------------------------- cartons ouverts ---------------------------
+   * On peut commander a la bouteille, mais Schenk ne livre qu'en cartons
+   * entiers : ces bouteilles restent EN ATTENTE jusqu'a ce que le groupe
+   * complete le carton. state.etat contient ce que le groupe a deja engage,
+   * par reference : { attente: 2, btl: 6, participants: [{prenom, n}] }.
+   */
+  function qty(ref) {
+    var v = state.lignes[ref];
+    if (v == null) return { c: 0, s: 0 };
+    if (typeof v === 'number') return { c: v, s: 0 };   // ancien brouillon
+    return { c: Number(v.c) || 0, s: Number(v.s) || 0 };
+  }
+
+  // Bouteilles deja en attente dans le groupe sur cette reference (hors moi).
+  function attenteGroupe(ref) {
+    var e = state.etat && state.etat[ref];
+    return e ? Number(e.attente) || 0 : 0;
+  }
+
+  // Combien de MES bouteilles seules seraient confirmees : premier arrive,
+  // premier servi, donc celles du groupe passent avant les miennes.
+  function confirmables(ref, seules, btl) {
+    if (seules <= 0) return 0;
+    var a = attenteGroupe(ref);
+    return (a + seules >= btl) ? Math.min(seules, btl - a) : 0;
+  }
+
   /* ------------------------------ totaux --------------------------------- */
   function lignes() {
     var out = [];
     Object.keys(state.lignes).forEach(function (ref) {
-      var c = state.lignes[ref];
+      var q = qty(ref);
       var w = BY_REF[ref];
-      if (!w || !c || c <= 0) return;
-      var bouteilles = c * w.btl;
-      var totalHT = w.prix_ht * bouteilles;
+      if (!w || (q.c <= 0 && q.s <= 0)) return;
+      var conf = confirmables(ref, q.s, w.btl);
+      var fermes = q.c * w.btl + conf;          // bouteilles dues
+      var attente = q.s - conf;                 // bouteilles non facturees
+      var unite = ttc(w.prix_ht);
       out.push({
         ref: ref, nom: w.nom, appellation: w.appellation, couleur: w.couleur,
         cl: w.cl, mill: w.mill, emb: w.emb, btl: w.btl, groupe: w.groupe,
-        prix_ht: w.prix_ht, prix_ttc: ttc(w.prix_ht),
-        cartons: c, bouteilles: bouteilles,
-        total_ht: totalHT, total_ttc: ttc(w.prix_ht) * bouteilles
+        prix_ht: w.prix_ht, prix_ttc: unite,
+        cartons: q.c, seules: q.s, confirmees: conf, attente: attente,
+        bouteilles: fermes,
+        total_ht: w.prix_ht * fermes,
+        total_ttc: unite * fermes,
+        total_attente: unite * attente
       });
     });
     out.sort(function (a, b) {
@@ -164,9 +197,11 @@
   function totaux(ls) {
     return ls.reduce(function (t, l) {
       t.cartons += l.cartons; t.bouteilles += l.bouteilles;
-      t.ht += l.total_ht; t.ttc += l.total_ttc; t.refs += 1;
+      t.seules += l.seules; t.attente += l.attente;
+      t.ht += l.total_ht; t.ttc += l.total_ttc; t.ttcAttente += l.total_attente;
+      t.refs += 1;
       return t;
-    }, { cartons: 0, bouteilles: 0, ht: 0, ttc: 0, refs: 0 });
+    }, { cartons: 0, bouteilles: 0, seules: 0, attente: 0, ht: 0, ttc: 0, ttcAttente: 0, refs: 0 });
   }
 
   /* ----------------------------- stockage -------------------------------- */
@@ -187,7 +222,11 @@
         var all = Store.localAll();
         all.push(order);
         localStorage.setItem(LS_ORDERS, JSON.stringify(all));
-        return Promise.resolve({ ok: true, id: order.id, mode: 'local' });
+        var m = montantsLocaux(order);
+        return Promise.resolve({
+          ok: true, id: order.id, mode: 'local',
+          montant_a_payer: m.payer, montant_en_attente: m.attente
+        });
       }
       return this.post({ action: 'submit', code: state.code, commande: order });
     },
@@ -198,20 +237,112 @@
       return this.post({ action: 'check', code: code });
     },
 
+    // Etat des cartons ouverts du groupe. En local, on le reconstitue depuis
+    // les commandes stockees dans ce navigateur.
+    etat: function (code) {
+      if (!this.remote()) return Promise.resolve({ ok: true, refs: etatLocal() });
+      return this.post({ action: 'etat', code: code });
+    },
+
     list: function (user, pass) {
       if (!this.remote()) {
         if (user !== CFG.adminUser || pass !== CFG.adminPassLocal) {
           return Promise.resolve({ ok: false, error: 'Identifiants incorrects.' });
         }
-        return Promise.resolve({ ok: true, commandes: Store.localAll(), mode: 'local' });
+        return Promise.resolve({ ok: true, commandes: reconcilierLocal(Store.localAll()), mode: 'local' });
       }
       return this.post({ action: 'list', user: user, pass: pass });
     },
 
     localAll: function () {
+      // (mode local uniquement)
       try { return JSON.parse(localStorage.getItem(LS_ORDERS) || '[]'); } catch (e) { return []; }
     }
   };
+
+  // ---- mode local : etat des cartons ouverts calcule depuis localStorage
+  function seulesParRef() {
+    var parRef = {};
+    Store.localAll().forEach(function (o) {
+      (o.lignes || []).forEach(function (l) {
+        var s = Number(l.seules) || 0;
+        if (s <= 0) return;
+        var btl = Number(l.btl) || (BY_REF[l.ref] ? BY_REF[l.ref].btl : 6);
+        (parRef[l.ref] = parRef[l.ref] || { btl: btl, total: 0, lignes: [] });
+        parRef[l.ref].total += s;
+        parRef[l.ref].lignes.push({ prenom: o.prenom, n: s, date: o.date });
+      });
+    });
+    return parRef;
+  }
+
+  /* Mode local : recalcule le champ confirmees de chaque ligne, premier arrive
+     premier servi — c'est ce que fait reconcilier_() cote Apps Script. */
+  function reconcilierLocal(cmds) {
+    var parRef = {};
+    cmds.forEach(function (o) {
+      (o.lignes || []).forEach(function (l) {
+        l.confirmees = 0;
+        var sq = Number(l.seules) || 0;
+        if (!sq) return;
+        var btl = Number(l.btl) || (BY_REF[l.ref] ? BY_REF[l.ref].btl : 6);
+        (parRef[l.ref] = parRef[l.ref] || { btl: btl, total: 0, lignes: [] });
+        parRef[l.ref].total += sq;
+        parRef[l.ref].lignes.push({ l: l, date: o.date, n: sq });
+      });
+    });
+    Object.keys(parRef).forEach(function (ref) {
+      var e = parRef[ref];
+      var quota = Math.floor(e.total / e.btl) * e.btl;
+      e.lignes.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+      e.lignes.forEach(function (x) {
+        var conf = Math.min(x.n, Math.max(0, quota));
+        quota -= conf;
+        x.l.confirmees = conf;
+      });
+    });
+    return cmds;
+  }
+
+  // Repartition premier arrive / premier servi, comme reconcilier_() cote serveur.
+  function montantsLocaux(order) {
+    var parRef = seulesParRef();
+    var payer = 0, attente = 0;
+    (order.lignes || []).forEach(function (l) {
+      var unite = ttc(l.prix_ht);
+      var btl = Number(l.btl) || 6;
+      payer += unite * (Number(l.cartons) || 0) * btl;
+      var s = Number(l.seules) || 0;
+      if (!s) return;
+      var e = parRef[l.ref];
+      var total = e ? e.total : s;
+      var quota = Math.floor(total / btl) * btl;
+      // les bouteilles des autres, arrivees avant, passent en premier
+      var avant = total - s;
+      var conf = Math.max(0, Math.min(s, quota - Math.min(avant, quota)));
+      payer += unite * conf;
+      attente += unite * (s - conf);
+    });
+    return { payer: Math.round(payer * 100) / 100, attente: Math.round(attente * 100) / 100 };
+  }
+
+  function etatLocal() {
+    var parRef = seulesParRef(), out = {};
+    Object.keys(parRef).forEach(function (ref) {
+      var e = parRef[ref];
+      var attente = e.total % e.btl;
+      if (!attente) return;
+      e.lignes.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+      var reste = attente, participants = [];
+      for (var i = e.lignes.length - 1; i >= 0 && reste > 0; i--) {
+        var n = Math.min(e.lignes[i].n, reste);
+        reste -= n;
+        participants.unshift({ prenom: String(e.lignes[i].prenom || '').split(' ')[0], n: n });
+      }
+      out[ref] = { attente: attente, btl: e.btl, participants: participants };
+    });
+    return out;
+  }
 
   /* ---------------------------- navigation ------------------------------- */
   function show(step) {
@@ -318,7 +449,9 @@
     return CAT.filter(function (w) {
       if (f.groupe && w.groupe !== f.groupe) return false;
       if (f.couleur && w.couleur !== f.couleur) return false;
-      if (f.onlyPicked && !(state.lignes[w.ref] > 0)) return false;
+      var sel = qty(w.ref);
+      if (f.onlyPicked && sel.c <= 0 && sel.s <= 0) return false;
+      if (f.onlyOpen && !(attenteGroupe(w.ref) > 0)) return false;
       if (q) {
         var hay = norm(w.nom + ' ' + w.appellation + ' ' + w.ref + ' ' + w.groupe + ' ' + w.mill);
         if (hay.indexOf(q) === -1) return false;
@@ -342,7 +475,8 @@
         html += '<div class="group"><h3>' + esc(w.groupe) + '</h3>' +
           '<div class="scroll-x"><table><thead><tr>' +
           '<th>Réf.</th><th>Vin</th><th class="num">Prix bt. TTC</th>' +
-          '<th class="num">Carton</th><th>Cartons</th><th class="num">Bouteilles</th><th class="num">Sous-total TTC</th>' +
+          '<th class="num">Carton</th><th>Cartons</th><th>Bouteilles seules</th>' +
+          '<th class="num">Bouteilles</th><th class="num">Sous-total TTC</th>' +
           '</tr></thead><tbody>';
       }
       html += rowHtml(w);
@@ -352,40 +486,72 @@
     renderTotaux();
   }
 
+  function rowClass(w) {
+    var q = qty(w.ref);
+    return (q.c > 0 || q.s > 0) ? 'picked' : '';
+  }
+
   function rowHtml(w) {
-    var c = state.lignes[w.ref] || 0;
-    var sub = c * w.btl * ttc(w.prix_ht);
-    return '<tr data-ref="' + w.ref + '"' + (c > 0 ? ' class="picked"' : '') + '>' +
+    var q = qty(w.ref);
+    var unite = ttc(w.prix_ht);
+    var conf = confirmables(w.ref, q.s, w.btl);
+    var attente = q.s - conf;
+    var sub = (q.c * w.btl + conf) * unite;
+    var a = attenteGroupe(w.ref);
+    var e = state.etat[w.ref];
+    var manque = a > 0 ? w.btl - a : 0;
+
+    var badge = '';
+    if (a > 0) {
+      var qui = (e.participants || []).map(function (p) { return esc(p.prenom) + ' (' + p.n + ')'; }).join(', ');
+      badge = '<div class="open-carton">Carton ouvert <b>' + a + '/' + w.btl + '</b> · il manque ' +
+        manque + ' bt.' + (qui ? ' · ' + qui : '') +
+        ' <button type="button" class="mini" data-act="fill">Compléter (' + manque + ')</button></div>';
+    } else if (q.s > 0) {
+      badge = '<div class="open-carton mine">Vous ouvrez un carton <b>' + q.s + '/' + w.btl +
+        '</b> · il manque ' + (w.btl - q.s) + ' bt. pour qu\'il soit commandé</div>';
+    }
+
+    return '<tr data-ref="' + w.ref + '" class="' + rowClass(w) + '">' +
       '<td class="ref">' + w.ref + '</td>' +
       '<td><div class="wine-name"><span class="dot ' + slugCouleur(w.couleur) + '"></span>' + esc(w.nom) + '</div>' +
       '<div class="wine-meta">' + esc(w.appellation) + ' · ' + esc(w.couleur) + ' · ' + esc(w.cl) +
-      ' · ' + esc(w.mill === 'NM' ? 'sans millésime' : w.mill) + '</div></td>' +
-      '<td class="num">' + nf.format(ttc(w.prix_ht)) + '</td>' +
-      '<td class="num"><span class="tag">' + w.btl + ' bt.</span><br><small>' + nf.format(w.btl * ttc(w.prix_ht)) + '</small></td>' +
+      ' · ' + esc(w.mill === 'NM' ? 'sans millésime' : w.mill) + '</div>' + badge + '</td>' +
+      '<td class="num">' + nf.format(unite) + '</td>' +
+      '<td class="num"><span class="tag">' + w.btl + ' bt.</span><br><small>' + nf.format(w.btl * unite) + '</small></td>' +
       '<td><span class="stepper">' +
-      '<button type="button" data-act="minus" aria-label="Retirer un carton">−</button>' +
-      '<input type="number" min="0" max="999" step="1" value="' + c + '" data-act="input" aria-label="Cartons ' + esc(w.nom) + '">' +
-      '<button type="button" data-act="plus" aria-label="Ajouter un carton">+</button>' +
+      '<button type="button" data-act="c-" aria-label="Retirer un carton">−</button>' +
+      '<input type="number" min="0" max="999" step="1" value="' + q.c + '" data-act="c" aria-label="Cartons ' + esc(w.nom) + '">' +
+      '<button type="button" data-act="c+" aria-label="Ajouter un carton">+</button>' +
       '</span></td>' +
-      '<td class="num">' + (c ? c * w.btl : '—') + '</td>' +
-      '<td class="num"><b>' + (c ? nf.format(sub) : '—') + '</b></td>' +
+      '<td><span class="stepper">' +
+      '<button type="button" data-act="s-" aria-label="Retirer une bouteille">−</button>' +
+      '<input type="number" min="0" max="' + (w.btl - 1) + '" step="1" value="' + q.s + '" data-act="s" aria-label="Bouteilles seules ' + esc(w.nom) + '">' +
+      '<button type="button" data-act="s+" aria-label="Ajouter une bouteille">+</button>' +
+      '</span>' + (q.s > 0 && attente > 0 ? '<div class="wine-meta att">en attente</div>' : '') +
+      (conf > 0 ? '<div class="wine-meta ok">carton bouclé</div>' : '') + '</td>' +
+      '<td class="num">' + (q.c * w.btl + conf || '—') +
+      (attente > 0 ? ' <span class="att">(' + attente + ')</span>' : '') + '</td>' +
+      '<td class="num"><b>' + (sub ? nf.format(sub) : '—') + '</b>' +
+      (attente > 0 ? '<div class="wine-meta att">(' + nf.format(attente * unite) + ')</div>' : '') + '</td>' +
       '</tr>';
   }
 
   function refreshRow(ref) {
     var tr = document.querySelector('tr[data-ref="' + ref + '"]');
     if (!tr) return;
-    var w = BY_REF[ref], c = state.lignes[ref] || 0;
-    tr.classList.toggle('picked', c > 0);
-    tr.querySelector('[data-act="input"]').value = c;
-    var tds = tr.querySelectorAll('td');
-    tds[5].textContent = c ? c * w.btl : '—';
-    tds[6].innerHTML = '<b>' + (c ? nf.format(c * w.btl * ttc(w.prix_ht)) : '—') + '</b>';
+    var w = BY_REF[ref];
+    var html = rowHtml(w);
+    tr.className = rowClass(w);
+    tr.innerHTML = html.replace(/^<tr[^>]*>/, '').replace(/<\/tr>$/, '');
   }
 
-  function setQty(ref, n) {
-    n = Math.max(0, Math.min(999, Math.floor(Number(n) || 0)));
-    if (n === 0) delete state.lignes[ref]; else state.lignes[ref] = n;
+  function setQty(ref, c, s) {
+    var w = BY_REF[ref];
+    c = Math.max(0, Math.min(999, Math.floor(Number(c) || 0)));
+    s = Math.max(0, Math.min(w.btl - 1, Math.floor(Number(s) || 0)));
+    if (c === 0 && s === 0) delete state.lignes[ref];
+    else state.lignes[ref] = { c: c, s: s };
     saveDraft();
     refreshRow(ref);
     renderTotaux();
@@ -397,7 +563,27 @@
     $('t-bouteilles').textContent = t.bouteilles;
     $('t-refs').textContent = t.refs;
     $('t-total').textContent = chf(t.ttc);
-    $('btn-to-3').disabled = t.cartons === 0;
+    $('fig-attente').classList.toggle('hidden', t.attente === 0);
+    $('t-attente').textContent = '(' + chf(t.ttcAttente) + ')';
+    $('t-attente-n').textContent = t.attente;
+    $('btn-to-3').disabled = t.refs === 0;
+  }
+
+  // Recupere l'etat des cartons ouverts. Photo a l'instant de l'appel : deux
+  // personnes qui commandent en meme temps ne se voient pas mutuellement, d'ou
+  // le bouton Actualiser et le rechargement en entrant a l'etape 2.
+  function chargerEtat(afficherRetour) {
+    var b = $('btn-refresh-etat');
+    if (afficherRetour) { b.disabled = true; b.textContent = 'Actualisation…'; }
+    return Store.etat(state.code).then(function (r) {
+      if (r && r.ok) {
+        state.etat = r.refs || {};
+        renderCatalogue();
+      }
+    }).catch(function () { /* hors ligne : on garde l'etat precedent */ })
+      .then(function () {
+        if (afficherRetour) { b.disabled = false; b.textContent = 'Actualiser'; }
+      });
   }
 
   /* ------------------------------ étape 3 -------------------------------- */
@@ -409,7 +595,11 @@
       (i.tel ? '<dt>Téléphone</dt><dd>' + esc(i.tel) + '</dd>' : '');
     $('recap-table').innerHTML = tableLignes(ls, t);
     $('recap-note').innerHTML =
-      'Total <b>TTC</b> (TVA ' + pctTVA() + ' % incluse, prix arrondis au 5 ct supérieur) : <b>' + chf(t.ttc) + '</b>.<br>' +
+      '<b>À payer : ' + chf(t.ttc) + '</b> — TVA ' + pctTVA() + ' % incluse, prix arrondis au 5 ct supérieur.<br>' +
+      (t.attente > 0 ?
+        '<b>Entre parenthèses : ' + chf(t.ttcAttente) + ' — à ne pas payer.</b> Ces ' + t.attente +
+        ' bouteille(s) sont dans un carton ouvert, pas encore complet. Si quelqu\'un du groupe le termine, ' +
+        'vous recevrez un e-mail avec le complément à payer. Sinon elles ne seront pas commandées.<br>' : '') +
       'Commandes jusqu\'au ' + esc(CFG.deadline) + ' · <b>paiement avant le ' + esc(CFG.deadlinePaiement) + '</b>.<br>' +
       payLine(' · ');
   }
@@ -420,15 +610,25 @@
     ls.forEach(function (l) {
       h += '<tr><td class="ref">' + l.ref + '</td>' +
         '<td><div class="wine-name"><span class="dot ' + slugCouleur(l.couleur) + '"></span>' + esc(l.nom) + '</div>' +
-        '<div class="wine-meta">' + esc(l.appellation) + ' · ' + esc(l.cl) + ' · ' + esc(l.mill) + ' · ' + esc(l.groupe) + '</div></td>' +
-        '<td class="num">' + l.cartons + ' × ' + l.btl + '</td>' +
-        '<td class="num">' + l.bouteilles + '</td>' +
+        '<div class="wine-meta">' + esc(l.appellation) + ' · ' + esc(l.cl) + ' · ' + esc(l.mill) + ' · ' + esc(l.groupe) + '</div>' +
+        (l.attente > 0 ? '<div class="wine-meta att">' + l.attente +
+          ' bouteille(s) en attente — carton ouvert, non facturé</div>' : '') +
+        (l.confirmees > 0 ? '<div class="wine-meta ok">' + l.confirmees +
+          ' bouteille(s) hors carton, carton bouclé</div>' : '') + '</td>' +
+        '<td class="num">' + (l.cartons ? l.cartons + ' × ' + l.btl : '—') + '</td>' +
+        '<td class="num">' + l.bouteilles +
+        (l.attente > 0 ? ' <span class="att">(' + l.attente + ')</span>' : '') + '</td>' +
         '<td class="num">' + nf.format(l.prix_ttc) + '</td>' +
-        '<td class="num">' + nf.format(l.total_ttc) + '</td></tr>';
+        '<td class="num">' + nf.format(l.total_ttc) +
+        (l.attente > 0 ? '<div class="wine-meta att">(' + nf.format(l.total_attente) + ')</div>' : '') +
+        '</td></tr>';
     });
-    h += '</tbody><tfoot><tr><td colspan="2">Total — ' + t.refs + ' référence(s)</td>' +
+    h += '</tbody><tfoot><tr><td colspan="2">À payer — ' + t.refs + ' référence(s)</td>' +
       '<td class="num">' + t.cartons + '</td><td class="num">' + t.bouteilles + '</td>' +
-      '<td></td><td class="num">' + chf(t.ttc) + '</td></tr></tfoot>';
+      '<td></td><td class="num">' + chf(t.ttc) + '</td></tr>' +
+      (t.attente > 0 ? '<tr class="att"><td colspan="3">En attente — cartons ouverts, non facturé</td>' +
+        '<td class="num">(' + t.attente + ')</td><td></td><td class="num">(' + chf(t.ttcAttente) + ')</td></tr>' : '') +
+      '</tfoot>';
     return h;
   }
 
@@ -440,12 +640,14 @@
       prenom: i.prenom, nom: i.nom, email: i.email, tel: i.tel,
       tva: TVA,
       total_cartons: t.cartons, total_bouteilles: t.bouteilles,
+      total_seules: t.seules,
       total_ht: Math.round(t.ht * 100) / 100, total_ttc: Math.round(t.ttc * 100) / 100,
+      total_attente: Math.round(t.ttcAttente * 100) / 100,
       lignes: ls.map(function (l) {
         return {
           ref: l.ref, nom: l.nom, appellation: l.appellation, couleur: l.couleur,
           cl: l.cl, mill: l.mill, emb: l.emb, btl: l.btl, groupe: l.groupe,
-          cartons: l.cartons, bouteilles: l.bouteilles,
+          cartons: l.cartons, seules: l.seules, bouteilles: l.cartons * l.btl,
           prix_ht: l.prix_ht,
           total_ht: Math.round(l.total_ht * 100) / 100,
           total_ttc: Math.round(l.total_ttc * 100) / 100
@@ -469,11 +671,18 @@
       if (res && res.codeError) { erreurCode(res.error); return; }
       if (!res || !res.ok) throw new Error((res && res.error) || 'Réponse inattendue du serveur.');
       var t = totaux(lignes());
+      // Le serveur est l'autorite sur ce qui est confirme ou en attente.
+      var payer = typeof res.montant_a_payer === 'number' ? res.montant_a_payer : t.ttc;
+      var attente = typeof res.montant_en_attente === 'number' ? res.montant_en_attente : t.ttcAttente;
       $('done-text').innerHTML = 'Merci ' + esc(state.identite.prenom) + '. Votre commande <b>' + esc(res.id || order.id) +
-        '</b> est enregistrée : <b>' + t.cartons + ' carton(s)</b>, ' + t.bouteilles + ' bouteilles, <b>' + chf(t.ttc) + '</b> TTC.' +
+        '</b> est enregistrée : <b>' + t.cartons + ' carton(s)</b>' +
+        (t.seules ? ' et ' + t.seules + ' bouteille(s) hors carton' : '') + ', <b>' + chf(payer) + '</b> TTC à payer' +
+        (attente > 0 ? ' — <span class="att">(' + chf(attente) + ' en attente)</span>' : '') + '.' +
         (Store.remote() ? '' : '<br><small>Mode local : la commande est stockée dans ce navigateur uniquement.</small>');
       var ref = state.identite.prenom + ' ' + state.identite.nom + ' — ' + (res.id || order.id);
-      var pay = '<b>Paiement</b> : ' + chf(t.ttc) + ' à verser avant le <b>' + esc(CFG.deadlinePaiement) + '</b><br>';
+      var pay = '<b>Paiement</b> : ' + chf(payer) + ' à verser avant le <b>' + esc(CFG.deadlinePaiement) + '</b><br>' +
+        (attente > 0 ? '<span class="att">' + chf(attente) + ' en attente : bouteilles dans un carton ouvert, ' +
+          'à ne pas payer. Si le groupe le complète, un nouvel e-mail vous donnera le complément.</span><br>' : '');
       if (hasPayInfo()) {
         pay += 'Bénéficiaire : <b>' + esc(CFG.beneficiaire) + '</b><br>' +
                'IBAN : <b>' + esc(CFG.iban) + '</b><br>';
@@ -493,6 +702,7 @@
       $('done-paiement').innerHTML = pay;
       $('done-table').innerHTML = tableLignes(lignes(), t);
       state.lignes = {}; saveDraft();
+      chargerEtat();
       show('done');
     }).catch(function (err) {
       $('submit-err').textContent = 'Envoi impossible : ' + err.message +
@@ -545,7 +755,9 @@
       groupe: l.groupe || w.groupe || 'Autres',
       prix_ht: l.prix_ht,
       cartons: Number(l.cartons) || 0,
-      bouteilles: Number(l.bouteilles) || 0
+      bouteilles: Number(l.bouteilles) || 0,
+      seules: Number(l.seules) || 0,
+      confirmees: Number(l.confirmees) || 0
     };
   }
 
@@ -556,13 +768,19 @@
         var a = map[l.ref] || (map[l.ref] = {
           ref: l.ref, nom: l.nom, appellation: l.appellation, couleur: l.couleur,
           cl: l.cl, mill: l.mill, emb: l.emb, btl: l.btl, groupe: l.groupe,
-          prix_ht: l.prix_ht, cartons: 0, bouteilles: 0, ht: 0, ttc: 0, par: []
+          prix_ht: l.prix_ht, cartons: 0, bouteilles: 0, seules: 0, confirmees: 0,
+          attente: 0, ht: 0, ttc: 0, par: []
         });
+        var bt = l.bouteilles + l.confirmees;          // bouteilles reellement commandees
         a.cartons += l.cartons;
-        a.bouteilles += l.bouteilles;
-        a.ht += l.prix_ht * l.bouteilles;
-        a.ttc += ttc(l.prix_ht) * l.bouteilles;
-        a.par.push(o.prenom + ' ' + o.nom + ' (' + l.cartons + ')');
+        a.bouteilles += bt;
+        a.seules += l.seules;
+        a.confirmees += l.confirmees;
+        a.attente += l.seules - l.confirmees;
+        a.ht += l.prix_ht * bt;
+        a.ttc += ttc(l.prix_ht) * bt;
+        a.par.push(o.prenom + ' ' + o.nom + ' (' + l.cartons +
+          (l.seules ? ' + ' + l.seules + ' bt.' : '') + ')');
       });
     });
     var arr = Object.keys(map).map(function (k) { return map[k]; });
@@ -576,6 +794,7 @@
 
   function renderAdmin() {
     var agg = aggregate();
+    var tAtt = agg.reduce(function (s, a) { return s + a.attente; }, 0);
     var tc = agg.reduce(function (s, a) { return s + a.cartons; }, 0);
     var tb = agg.reduce(function (s, a) { return s + a.bouteilles; }, 0);
     var tht = agg.reduce(function (s, a) { return s + a.ht; }, 0);
@@ -583,6 +802,7 @@
 
     $('admin-sub').innerHTML = adminData.length + ' commande(s) · ' + agg.length + ' référence(s) · ' +
       tc + ' carton(s) · ' + tb + ' bouteilles · <b>' + chf(tttc) + ' TTC</b>' +
+      (tAtt ? ' · <span class="att">' + tAtt + ' bt. en attente, non commandées</span>' : '') +
       ' <span class="muted">(' + chf(tht) + ' HT)</span>' +
       (Store.remote() ? '' : ' · <span class="tag">mode local</span>');
 
@@ -602,51 +822,77 @@
       ' — la colonne <b>Nbre de BTES</b> reprend la logique du formulaire Schenk. ' +
       'Schenk facture <b>HT</b> ; la colonne TTC sert à la refacturation interne.</div>' +
       '<div class="scroll-x"><table><thead><tr>' +
-      '<th>Réf.</th><th>Vin</th><th class="num">Cartons</th><th class="num">Nbre de BTES</th>' +
+      '<th>Réf.</th><th>Vin</th><th class="num">Cartons</th><th class="num">Bt. hors carton</th>' +
+      '<th class="num">Nbre de BTES</th>' +
       '<th class="num">Prix bt. HT</th><th class="num">Total HT</th><th class="num">Total TTC</th><th>Détail</th>' +
       '</tr></thead><tbody>';
     var current = null;
     agg.forEach(function (a) {
       if (a.groupe !== current) {
         current = a.groupe;
-        h += '<tr><td colspan="8" style="background:var(--panel-2);font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:.75rem">' + esc(a.groupe) + '</td></tr>';
+        h += '<tr><td colspan="9" style="background:var(--panel-2);font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:.75rem">' + esc(a.groupe) + '</td></tr>';
       }
       h += '<tr><td class="ref">' + a.ref + '</td>' +
         '<td><div class="wine-name"><span class="dot ' + slugCouleur(a.couleur) + '"></span>' + esc(a.nom) + '</div>' +
         '<div class="wine-meta">' + esc(a.appellation) + ' · ' + esc(a.cl) + ' · ' + esc(a.mill) + ' · ' + esc(a.emb) + '</div></td>' +
-        '<td class="num">' + a.cartons + '</td><td class="num"><b>' + a.bouteilles + '</b></td>' +
+        '<td class="num">' + a.cartons + '</td>' +
+        '<td class="num">' + (a.confirmees || '—') +
+        (a.attente ? ' <span class="att">(' + a.attente + ' perdue(s))</span>' : '') + '</td>' +
+        '<td class="num"><b>' + a.bouteilles + '</b></td>' +
         '<td class="num">' + nf.format(a.prix_ht) + '</td>' +
         '<td class="num">' + nf.format(a.ht) + '</td>' +
         '<td class="num">' + nf.format(a.ttc) + '</td>' +
         '<td class="wine-meta">' + esc(a.par.join(', ')) + '</td></tr>';
     });
+    var perdues = agg.filter(function (a) { return a.attente > 0; });
     h += '</tbody><tfoot><tr><td colspan="2">Total commande groupée</td>' +
-      '<td class="num">' + tc + '</td><td class="num">' + tb + '</td><td></td>' +
+      '<td class="num">' + tc + '</td>' +
+      '<td class="num">' + agg.reduce(function (n, a) { return n + a.confirmees; }, 0) + '</td>' +
+      '<td class="num">' + tb + '</td><td></td>' +
       '<td class="num">' + chf(tht) + '</td><td class="num">' + chf(tttc) + '</td><td></td></tr></tfoot></table></div>';
+    if (perdues.length) {
+      h += '<div class="note warn" style="margin-top:12px"><b>Cartons ouverts non complétés — ' +
+        'ces bouteilles ne sont PAS commandées et ne sont pas facturées :</b><ul style="margin:6px 0 0">' +
+        perdues.map(function (a) {
+          return '<li>' + esc(a.ref + ' — ' + a.nom) + ' : ' + a.attente + ' bt. sur ' + a.btl +
+            ' · ' + esc(a.par.join(', ')) + '</li>';
+        }).join('') + '</ul></div>';
+    }
     return h;
   }
 
   function htmlPeople() {
     var h = '<div class="scroll-x"><table><thead><tr><th>Commande</th><th>Personne</th><th>Contact</th>' +
-      '<th class="num">Cartons</th><th class="num">Bouteilles</th><th class="num">Total TTC</th></tr></thead><tbody>';
-    var ttcSum = 0;
+      '<th class="num">Cartons</th><th class="num">Bouteilles</th><th class="num">Total TTC</th>' +
+      '<th class="num">En attente</th></tr></thead><tbody>';
+    var ttcSum = 0, attSum = 0;
     adminData.slice().sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }).forEach(function (o) {
-      var t = (o.lignes || []).map(enrichir).reduce(function (s, l) { return s + ttc(l.prix_ht) * l.bouteilles; }, 0);
-      ttcSum += t;
+      var ls = (o.lignes || []).map(enrichir);
+      var t = ls.reduce(function (s, l) { return s + ttc(l.prix_ht) * (l.bouteilles + l.confirmees); }, 0);
+      var att = ls.reduce(function (s, l) { return s + ttc(l.prix_ht) * (l.seules - l.confirmees); }, 0);
+      ttcSum += t; attSum += att;
       h += '<tr><td class="ref">' + esc(o.id) + '<div class="wine-meta">' +
         esc(new Date(o.date).toLocaleString('fr-CH')) + '</div></td>' +
         '<td class="wine-name">' + esc(o.prenom + ' ' + o.nom) + '</td>' +
         '<td class="wine-meta">' + esc(o.email) + (o.tel ? '<br>' + esc(o.tel) : '') + '</td>' +
-        '<td class="num">' + o.total_cartons + '</td><td class="num">' + o.total_bouteilles + '</td>' +
-        '<td class="num"><b>' + nf.format(t) + '</b></td></tr>';
-      (o.lignes || []).map(enrichir).forEach(function (l) {
-        h += '<tr><td></td><td colspan="2" class="wine-meta">' + esc(l.ref + ' — ' + l.nom + ' (' + l.cl + ', ' + l.mill + ')') + '</td>' +
-          '<td class="num wine-meta">' + l.cartons + '</td><td class="num wine-meta">' + l.bouteilles + '</td>' +
-          '<td class="num wine-meta">' + nf.format(ttc(l.prix_ht) * l.bouteilles) + '</td></tr>';
+        '<td class="num">' + o.total_cartons + '</td>' +
+        '<td class="num">' + ls.reduce(function (n, l) { return n + l.bouteilles + l.confirmees; }, 0) + '</td>' +
+        '<td class="num"><b>' + nf.format(t) + '</b></td>' +
+        '<td class="num att">' + (att ? '(' + nf.format(att) + ')' : '—') + '</td></tr>';
+      ls.forEach(function (l) {
+        var enAttente = l.seules - l.confirmees;
+        h += '<tr><td></td><td colspan="2" class="wine-meta">' + esc(l.ref + ' — ' + l.nom + ' (' + l.cl + ', ' + l.mill + ')') +
+          (l.seules ? ' · ' + l.seules + ' bt. hors carton' +
+            (enAttente ? ' dont ' + enAttente + ' en attente' : ' confirmée(s)') : '') + '</td>' +
+          '<td class="num wine-meta">' + l.cartons + '</td>' +
+          '<td class="num wine-meta">' + (l.bouteilles + l.confirmees) + '</td>' +
+          '<td class="num wine-meta">' + nf.format(ttc(l.prix_ht) * (l.bouteilles + l.confirmees)) + '</td>' +
+          '<td class="num wine-meta att">' + (enAttente ? '(' + nf.format(ttc(l.prix_ht) * enAttente) + ')' : '') + '</td></tr>';
       });
     });
     h += '</tbody><tfoot><tr><td colspan="5">Total ' + adminData.length + ' commande(s)</td>' +
-      '<td class="num">' + chf(ttcSum) + '</td></tr></tfoot></table></div>';
+      '<td class="num">' + chf(ttcSum) + '</td>' +
+      '<td class="num att">' + (attSum ? '(' + chf(attSum) + ')' : '—') + '</td></tr></tfoot></table></div>';
     return h;
   }
 
@@ -702,21 +948,28 @@
   }
 
   function csvAgg() {
-    var rows = [['Ref', 'Nbre de BTES', 'Cartons', 'Designation', 'Appellation', 'Couleur', 'cl', 'Emb', 'Mill', 'Prix bt HT', 'Total HT', 'Total TTC', 'Demandeurs']];
+    var rows = [['Ref', 'Nbre de BTES', 'Cartons', 'Bt hors carton confirmees', 'Bt en attente non commandees',
+      'Designation', 'Appellation', 'Couleur', 'cl', 'Emb', 'Mill', 'Prix bt HT', 'Total HT', 'Total TTC', 'Demandeurs']];
     aggregate().forEach(function (a) {
-      rows.push([a.ref, a.bouteilles, a.cartons, a.nom, a.appellation, a.couleur, a.cl, a.emb, a.mill,
+      rows.push([a.ref, a.bouteilles, a.cartons, a.confirmees, a.attente,
+        a.nom, a.appellation, a.couleur, a.cl, a.emb, a.mill,
         a.prix_ht.toFixed(2), a.ht.toFixed(2), a.ttc.toFixed(2), a.par.join(' / ')]);
     });
     csv(rows, 'commande-groupee-noel-2026.csv');
   }
 
   function csvDet() {
-    var rows = [['Commande', 'Date', 'Prenom', 'Nom', 'Email', 'Tel', 'Ref', 'Designation', 'cl', 'Mill', 'Cartons', 'Bouteilles', 'Prix bt HT', 'Total HT', 'Total TTC']];
+    var rows = [['Commande', 'Date', 'Prenom', 'Nom', 'Email', 'Tel', 'Ref', 'Designation', 'cl', 'Mill',
+      'Cartons', 'Bt hors carton', 'Bt confirmees', 'Bt en attente', 'Bouteilles facturees',
+      'Prix bt HT', 'Total HT', 'Total TTC', 'TTC en attente']];
     adminData.forEach(function (o) {
       (o.lignes || []).map(enrichir).forEach(function (l) {
+        var bt = l.bouteilles + l.confirmees;
+        var att = l.seules - l.confirmees;
         rows.push([o.id, o.date, o.prenom, o.nom, o.email, o.tel || '', l.ref, l.nom, l.cl, l.mill,
-          l.cartons, l.bouteilles, l.prix_ht.toFixed(2),
-          (l.prix_ht * l.bouteilles).toFixed(2), (ttc(l.prix_ht) * l.bouteilles).toFixed(2)]);
+          l.cartons, l.seules, l.confirmees, att, bt, l.prix_ht.toFixed(2),
+          (l.prix_ht * bt).toFixed(2), (ttc(l.prix_ht) * bt).toFixed(2),
+          (ttc(l.prix_ht) * att).toFixed(2)]);
       });
     });
     csv(rows, 'commandes-detail-noel-2026.csv');
@@ -739,11 +992,11 @@
 
     $('btn-to-2').addEventListener('click', function () {
       if (!validIdentite()) return;
-      if (!Store.remote() || state.codeOk === true) { renderCatalogue(); show(2); return; }
+      if (!Store.remote() || state.codeOk === true) { renderCatalogue(); show(2); chargerEtat(); return; }
       var b = this, texte = b.textContent;
       b.disabled = true; b.textContent = 'Vérification du code…';
       Store.check(state.code).then(function (r) {
-        if (r && r.ok) { state.codeOk = true; renderCatalogue(); show(2); }
+        if (r && r.ok) { state.codeOk = true; renderCatalogue(); show(2); chargerEtat(); }
         else if (r && r.codeError) { erreurCode(r.error); }
         else { renderCatalogue(); show(2); }   // serveur muet : le submit tranchera
       }).catch(function () {
@@ -754,7 +1007,7 @@
     });
     $('btn-back-1').addEventListener('click', function () { show(1); });
     $('btn-to-3').addEventListener('click', function () { renderRecap(); show(3); });
-    $('btn-back-2').addEventListener('click', function () { renderCatalogue(); show(2); });
+    $('btn-back-2').addEventListener('click', function () { renderCatalogue(); show(2); chargerEtat(); });
     $('btn-submit').addEventListener('click', submit);
     $('btn-print-done').addEventListener('click', function () { window.print(); });
     $('btn-new').addEventListener('click', function () {
@@ -797,12 +1050,31 @@
       var b = ev.target.closest('button[data-act]');
       if (!b) return;
       var ref = b.closest('tr').dataset.ref;
-      setQty(ref, (state.lignes[ref] || 0) + (b.dataset.act === 'plus' ? 1 : -1));
+      var q = qty(ref), w = BY_REF[ref];
+      switch (b.dataset.act) {
+        case 'c+': setQty(ref, q.c + 1, q.s); break;
+        case 'c-': setQty(ref, q.c - 1, q.s); break;
+        case 's+': setQty(ref, q.c, q.s + 1); break;
+        case 's-': setQty(ref, q.c, q.s - 1); break;
+        case 'fill':   // compléter le carton ouvert par le groupe
+          setQty(ref, q.c, Math.min(w.btl - 1, w.btl - attenteGroupe(ref)));
+          break;
+      }
     });
     $('catalogue').addEventListener('change', function (ev) {
-      var i = ev.target.closest('input[data-act="input"]');
-      if (i) setQty(i.closest('tr').dataset.ref, i.value);
+      var i = ev.target.closest('input[data-act]');
+      if (!i) return;
+      var ref = i.closest('tr').dataset.ref, q = qty(ref);
+      if (i.dataset.act === 'c') setQty(ref, i.value, q.s);
+      else setQty(ref, q.c, i.value);
     });
+
+    $('btn-open-only').addEventListener('click', function () {
+      state.filtres.onlyOpen = !state.filtres.onlyOpen;
+      this.classList.toggle('primary', state.filtres.onlyOpen);
+      renderCatalogue();
+    });
+    $('btn-refresh-etat').addEventListener('click', function () { chargerEtat(true); });
 
     // admin
     $('btn-admin').addEventListener('click', function () { show('admin'); });

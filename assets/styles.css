@@ -206,3 +206,19 @@ tfoot td { padding: 10px 8px; font-weight: 700; border-top: 2px solid var(--ink)
   .wrap { padding: 0; max-width: none; }
   .group > h3 { position: static; }
 }
+
+/* ---------- cartons ouverts ---------- */
+.open-carton {
+  margin-top: 6px; padding: 5px 8px; border-radius: 6px;
+  background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--warn);
+  font-size: .8rem; color: var(--ink-soft);
+}
+.open-carton.mine { border-left-color: var(--accent); }
+.open-carton b { color: var(--ink); }
+button.mini { padding: 2px 8px; font-size: .75rem; border-radius: 5px; }
+.att, .wine-meta.att { color: var(--warn); }
+.wine-meta.ok { color: var(--ok); }
+.fig.att b { color: var(--warn); font-size: 1rem; }
+tfoot tr.att td { border-top: 1px solid var(--line); font-weight: 600; color: var(--warn); }
+.note.warn { border-left-color: var(--warn); }
+.note.warn ul { padding-left: 18px; }

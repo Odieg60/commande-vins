@@ -91,6 +91,22 @@ Le champ `adminPassLocal` de `config.js` n'est alors plus utilisé — c'est
    formulaire agrégé se remplit.
 4. Supprimer les lignes de test dans le Sheet.
 
+## Cartons ouverts
+
+L'onglet `Lignes` gagne quatre colonnes (`Bouteilles seules`, `Bt/carton`,
+`Confirmées`, `Confirmé le`) et l'onglet `Commandes` deux (`Bouteilles seules`,
+`TTC en attente`). Elles sont ajoutées automatiquement au prochain lancement de
+`setup` — les colonnes existantes gardent leur position.
+
+À chaque commande, `reconcilier_()` recalcule pour chaque référence combien de
+bouteilles seules sont confirmées (premier arrivé, premier servi), met à jour le
+Sheet, et envoie un e-mail « carton bouclé » aux participants dont les
+bouteilles viennent de devenir dues. `Confirmé le` empêche d'envoyer deux fois
+le même e-mail.
+
+L'action `etat` renvoie à la page les cartons ouverts — prénoms et quantités
+uniquement, ni e-mails ni montants — et exige le code d'invitation.
+
 ## Idempotence
 
 Si la même commande est envoyée deux fois (double-clic, renvoi après un timeout
