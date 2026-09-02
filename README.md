@@ -21,6 +21,11 @@ Les prix affichés aux participants sont **TTC**, TVA 8.1 % incluse — le PDF
 Schenk est en HT (« TVA non comprise »). L'espace admin affiche les deux, car
 Schenk facture en HT.
 
+**Arrondi** : le prix bouteille TTC est arrondi au **5 centimes supérieur**
+(usage suisse). Tous les autres montants en découlent — sous-totaux, totaux par
+personne et total groupé sont donc eux aussi des multiples de 0.05, et les
+additions sont vérifiables à la main. Les colonnes HT restent exactes.
+
 ## Version locale (aucune installation)
 
 Ouvrir `index.html` dans un navigateur (double-clic suffit).

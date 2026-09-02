@@ -23,7 +23,12 @@
   var nf = new Intl.NumberFormat('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   function chf(n) { return 'CHF ' + nf.format(Math.round(n * 100) / 100); }
-  function ttc(ht) { return ht * (1 + TVA); }
+  // Arrondi au 5 centimes SUPERIEUR (usage suisse).
+  function ceil5(n) { return Math.ceil(n * 20 - 1e-9) / 20; }
+  // Prix bouteille TTC : la TVA est appliquee au prix HT puis arrondie au 5 ct
+  // superieur. Tous les autres montants derivent de ce prix arrondi, donc
+  // chaque sous-total et le total sont eux aussi des multiples de 0.05.
+  function ttc(ht) { return ceil5(ht * (1 + TVA)); }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -72,7 +77,7 @@
         cl: w.cl, mill: w.mill, emb: w.emb, btl: w.btl, groupe: w.groupe,
         prix_ht: w.prix_ht, prix_ttc: ttc(w.prix_ht),
         cartons: c, bouteilles: bouteilles,
-        total_ht: totalHT, total_ttc: ttc(totalHT)
+        total_ht: totalHT, total_ttc: ttc(w.prix_ht) * bouteilles
       });
     });
     out.sort(function (a, b) {
@@ -279,7 +284,7 @@
       (i.tel ? '<dt>Téléphone</dt><dd>' + esc(i.tel) + '</dd>' : '');
     $('recap-table').innerHTML = tableLignes(ls, t);
     $('recap-note').innerHTML =
-      'Total <b>TTC</b> (TVA ' + pctTVA() + ' % incluse) : <b>' + chf(t.ttc) + '</b>.<br>' +
+      'Total <b>TTC</b> (TVA ' + pctTVA() + ' % incluse, prix arrondis au 5 ct supérieur) : <b>' + chf(t.ttc) + '</b>.<br>' +
       'Commandes jusqu\'au ' + esc(CFG.deadline) + ' · enlèvement ' + esc(CFG.enlevement) + '.<br>' +
       'Paiement à 30 jours nets après enlèvement, au plus tard le 18.12.2026.';
   }
@@ -377,11 +382,12 @@
         var a = map[l.ref] || (map[l.ref] = {
           ref: l.ref, nom: l.nom, appellation: l.appellation, couleur: l.couleur,
           cl: l.cl, mill: l.mill, emb: l.emb, btl: l.btl, groupe: l.groupe,
-          prix_ht: l.prix_ht, cartons: 0, bouteilles: 0, ht: 0, par: []
+          prix_ht: l.prix_ht, cartons: 0, bouteilles: 0, ht: 0, ttc: 0, par: []
         });
         a.cartons += l.cartons;
         a.bouteilles += l.bouteilles;
         a.ht += l.prix_ht * l.bouteilles;
+        a.ttc += ttc(l.prix_ht) * l.bouteilles;
         a.par.push(o.prenom + ' ' + o.nom + ' (' + l.cartons + ')');
       });
     });
@@ -398,9 +404,10 @@
     var tc = agg.reduce(function (s, a) { return s + a.cartons; }, 0);
     var tb = agg.reduce(function (s, a) { return s + a.bouteilles; }, 0);
     var tht = agg.reduce(function (s, a) { return s + a.ht; }, 0);
+    var tttc = agg.reduce(function (s, a) { return s + a.ttc; }, 0);
 
     $('admin-sub').innerHTML = adminData.length + ' commande(s) · ' + agg.length + ' référence(s) · ' +
-      tc + ' carton(s) · ' + tb + ' bouteilles · <b>' + chf(tht * (1 + TVA)) + ' TTC</b>' +
+      tc + ' carton(s) · ' + tb + ' bouteilles · <b>' + chf(tttc) + ' TTC</b>' +
       ' <span class="muted">(' + chf(tht) + ' HT)</span>' +
       (Store.remote() ? '' : ' · <span class="tag">mode local</span>');
 
@@ -412,10 +419,10 @@
       $('admin-content').innerHTML = '<div class="empty">Aucune commande enregistrée pour l\'instant.</div>';
       return;
     }
-    $('admin-content').innerHTML = adminTab === 'agg' ? htmlAgg(agg, tc, tb, tht) : htmlPeople();
+    $('admin-content').innerHTML = adminTab === 'agg' ? htmlAgg(agg, tc, tb, tht, tttc) : htmlPeople();
   }
 
-  function htmlAgg(agg, tc, tb, tht) {
+  function htmlAgg(agg, tc, tb, tht, tttc) {
     var h = '<div class="note" style="margin-bottom:12px">Formulaire à transmettre à ' + esc(CFG.contact) +
       ' — la colonne <b>Nbre de BTES</b> reprend la logique du formulaire Schenk. ' +
       'Schenk facture <b>HT</b> ; la colonne TTC sert à la refacturation interne.</div>' +
@@ -435,12 +442,12 @@
         '<td class="num">' + a.cartons + '</td><td class="num"><b>' + a.bouteilles + '</b></td>' +
         '<td class="num">' + nf.format(a.prix_ht) + '</td>' +
         '<td class="num">' + nf.format(a.ht) + '</td>' +
-        '<td class="num">' + nf.format(a.ht * (1 + TVA)) + '</td>' +
+        '<td class="num">' + nf.format(a.ttc) + '</td>' +
         '<td class="wine-meta">' + esc(a.par.join(', ')) + '</td></tr>';
     });
     h += '</tbody><tfoot><tr><td colspan="2">Total commande groupée</td>' +
       '<td class="num">' + tc + '</td><td class="num">' + tb + '</td><td></td>' +
-      '<td class="num">' + chf(tht) + '</td><td class="num">' + chf(tht * (1 + TVA)) + '</td><td></td></tr></tfoot></table></div>';
+      '<td class="num">' + chf(tht) + '</td><td class="num">' + chf(tttc) + '</td><td></td></tr></tfoot></table></div>';
     return h;
   }
 
@@ -449,7 +456,7 @@
       '<th class="num">Cartons</th><th class="num">Bouteilles</th><th class="num">Total TTC</th></tr></thead><tbody>';
     var ttcSum = 0;
     adminData.slice().sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }).forEach(function (o) {
-      var t = (o.lignes || []).reduce(function (s, l) { return s + l.prix_ht * l.bouteilles; }, 0) * (1 + TVA);
+      var t = (o.lignes || []).reduce(function (s, l) { return s + ttc(l.prix_ht) * l.bouteilles; }, 0);
       ttcSum += t;
       h += '<tr><td class="ref">' + esc(o.id) + '<div class="wine-meta">' +
         esc(new Date(o.date).toLocaleString('fr-CH')) + '</div></td>' +
@@ -460,7 +467,7 @@
       (o.lignes || []).forEach(function (l) {
         h += '<tr><td></td><td colspan="2" class="wine-meta">' + esc(l.ref + ' — ' + l.nom + ' (' + l.cl + ', ' + l.mill + ')') + '</td>' +
           '<td class="num wine-meta">' + l.cartons + '</td><td class="num wine-meta">' + l.bouteilles + '</td>' +
-          '<td class="num wine-meta">' + nf.format(l.prix_ht * l.bouteilles * (1 + TVA)) + '</td></tr>';
+          '<td class="num wine-meta">' + nf.format(ttc(l.prix_ht) * l.bouteilles) + '</td></tr>';
       });
     });
     h += '</tbody><tfoot><tr><td colspan="5">Total ' + adminData.length + ' commande(s)</td>' +
@@ -487,7 +494,7 @@
     var rows = [['Ref', 'Nbre de BTES', 'Cartons', 'Designation', 'Appellation', 'Couleur', 'cl', 'Emb', 'Mill', 'Prix bt HT', 'Total HT', 'Total TTC', 'Demandeurs']];
     aggregate().forEach(function (a) {
       rows.push([a.ref, a.bouteilles, a.cartons, a.nom, a.appellation, a.couleur, a.cl, a.emb, a.mill,
-        a.prix_ht.toFixed(2), a.ht.toFixed(2), (a.ht * (1 + TVA)).toFixed(2), a.par.join(' / ')]);
+        a.prix_ht.toFixed(2), a.ht.toFixed(2), a.ttc.toFixed(2), a.par.join(' / ')]);
     });
     csv(rows, 'commande-groupee-noel-2026.csv');
   }
@@ -498,7 +505,7 @@
       (o.lignes || []).forEach(function (l) {
         rows.push([o.id, o.date, o.prenom, o.nom, o.email, o.tel || '', l.ref, l.nom, l.cl, l.mill,
           l.cartons, l.bouteilles, l.prix_ht.toFixed(2),
-          (l.prix_ht * l.bouteilles).toFixed(2), (l.prix_ht * l.bouteilles * (1 + TVA)).toFixed(2)]);
+          (l.prix_ht * l.bouteilles).toFixed(2), (ttc(l.prix_ht) * l.bouteilles).toFixed(2)]);
       });
     });
     csv(rows, 'commandes-detail-noel-2026.csv');
