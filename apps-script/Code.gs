@@ -239,8 +239,9 @@ function mailConfirmation_(c) {
   var echeance = p.getProperty('PAY_DEADLINE') || '';
   var orgName = p.getProperty('ORG_NAME') || 'Commande groupée Noël 2026';
   var orgMail = p.getProperty('ORG_EMAIL') || '';
-  var enlev = p.getProperty('ENLEVEMENT') ||
-    'du 12.10 au 13.11.2026, sur préavis de min. 72 h';
+  // Aucun texte d'enlevement par defaut : le bloc n'apparait que si la Script
+  // Property ENLEVEMENT est renseignee.
+  var enlev = String(p.getProperty('ENLEVEMENT') || '').trim();
   var ref = c.prenom + ' ' + c.nom + ' — ' + c.id;
 
   var pay = '<h3 style="margin:22px 0 6px">Paiement</h3>' +
@@ -262,8 +263,8 @@ function mailConfirmation_(c) {
     '<p style="color:#6b6660;font-size:13px;margin:8px 0 0">Prix TTC, TVA ' +
     (Math.round((c.tva || 0.081) * 1000) / 10) + ' % incluse, arrondis au 5 centimes supérieur.</p>' +
     pay +
-    '<h3 style="margin:22px 0 6px">Enlèvement</h3>' +
-    '<p style="margin:0;color:#6b6660">' + esc_(enlev) + '. Sous réserve de disponibilité des stocks.</p>' +
+    (enlev ? '<h3 style="margin:22px 0 6px">Enlèvement</h3>' +
+      '<p style="margin:0;color:#6b6660">' + esc_(enlev) + '.</p>' : '') +
     '<p style="margin:22px 0 0;color:#6b6660;font-size:13px">Merci d\'indiquer la référence ci-dessus lors du virement, ' +
     'elle permet de rapprocher votre paiement de votre commande.</p></div>';
 
@@ -277,7 +278,7 @@ function mailConfirmation_(c) {
     (benef ? '\nBénéficiaire : ' + benef : '') +
     (iban ? '\nIBAN : ' + iban : '') +
     '\nRéférence : ' + ref +
-    '\n\nEnlèvement : ' + enlev + '\n';
+    (enlev ? '\n\nEnlèvement : ' + enlev : '') + '\n';
 
   try {
     var opts = { name: orgName, htmlBody: html };

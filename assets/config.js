@@ -37,6 +37,5 @@ window.CONFIG = {
   beneficiaire: "",
   iban: "",
 
-  enlevement: "du 12.10 au 13.11.2026, sur préavis de min. 72 h",
   contact: "vente@schenk-wine.ch"
 };

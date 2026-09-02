@@ -411,8 +411,7 @@
     $('recap-note').innerHTML =
       'Total <b>TTC</b> (TVA ' + pctTVA() + ' % incluse, prix arrondis au 5 ct supérieur) : <b>' + chf(t.ttc) + '</b>.<br>' +
       'Commandes jusqu\'au ' + esc(CFG.deadline) + ' · <b>paiement avant le ' + esc(CFG.deadlinePaiement) + '</b>.<br>' +
-      payLine(' · ') + '<br>' +
-      'Enlèvement ' + esc(CFG.enlevement) + '.';
+      payLine(' · ');
   }
 
   function tableLignes(ls, t) {
