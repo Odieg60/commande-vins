@@ -165,6 +165,24 @@
     return (a + seules >= btl) ? Math.min(seules, btl - a) : 0;
   }
 
+  // Dessin d'un carton : une bouteille par emplacement pris, une silhouette
+  // vide pour ce qui manque. Au-dela de 12 emplacements (CT24), une jauge.
+  var BOUTEILLE = '<svg viewBox="0 0 10 24" aria-hidden="true"><path d="' +
+    'M3.6 1h2.8v3.2c0 .5.15.9.45 1.3l.9 1.2c.35.5.55 1.1.55 1.7V21c0 1.1-.6 2-1.8 2H4.05' +
+    'c-1.2 0-1.8-.9-1.8-2V8.4c0-.6.2-1.2.55-1.7l.9-1.2c.3-.4.45-.8.45-1.3V1z"/></svg>';
+
+  function dessinCarton(pris, total) {
+    if (total > 12) {                       // trop d'emplacements : jauge
+      return '<span class="jauge"><span style="width:' +
+        Math.round(pris / total * 100) + '%"></span></span>';
+    }
+    var h = '<span class="slots">';
+    for (var i = 0; i < total; i++) {
+      h += '<span class="slot' + (i < pris ? ' pleine' : ' vide') + '">' + BOUTEILLE + '</span>';
+    }
+    return h + '</span>';
+  }
+
   /* ------------------------------ totaux --------------------------------- */
   function lignes() {
     var out = [];
@@ -503,13 +521,22 @@
 
     var badge = '';
     if (a > 0) {
+      var pris = Math.min(w.btl, a + q.s);
       var qui = (e.participants || []).map(function (p) { return esc(p.prenom) + ' (' + p.n + ')'; }).join(', ');
-      badge = '<div class="open-carton">Carton ouvert <b>' + a + '/' + w.btl + '</b> · il manque ' +
-        manque + ' bt.' + (qui ? ' · ' + qui : '') +
-        ' <button type="button" class="mini" data-act="fill">Compléter (' + manque + ')</button></div>';
+      badge = '<div class="open-carton">' +
+        dessinCarton(pris, w.btl) +
+        '<div class="open-txt"><b>Carton ouvert ' + pris + '/' + w.btl + '</b>' +
+        (pris >= w.btl ? ' — complet, il partira à la commande' : ' · il manque ' + (w.btl - pris) + ' bouteille(s)') +
+        (qui ? '<br><span class="qui">déjà pris : ' + qui + '</span>' : '') + '</div>' +
+        (pris < w.btl ? '<button type="button" class="mini fill" data-act="fill">Compléter (' +
+          (w.btl - a - q.s) + ')</button>' : '') +
+        '</div>';
     } else if (q.s > 0) {
-      badge = '<div class="open-carton mine">Vous ouvrez un carton <b>' + q.s + '/' + w.btl +
-        '</b> · il manque ' + (w.btl - q.s) + ' bt. pour qu\'il soit commandé</div>';
+      badge = '<div class="open-carton mine">' +
+        dessinCarton(q.s, w.btl) +
+        '<div class="open-txt"><b>Vous ouvrez un carton ' + q.s + '/' + w.btl + '</b>' +
+        ' · il manque ' + (w.btl - q.s) + ' bouteille(s) pour qu\'il soit commandé' +
+        '<br><span class="qui">quelqu\'un du groupe peut le compléter</span></div></div>';
     }
 
     return '<tr data-ref="' + w.ref + '" class="' + rowClass(w) + '">' +

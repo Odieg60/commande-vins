@@ -9,6 +9,8 @@
   --accent-soft: #f2e6ea;
   --ok: #2f6b46;
   --warn: #a45b12;
+  --warn-bg: #fdeed8;
+  --warn-line: #e8b878;
   --radius: 10px;
   --shadow: 0 1px 2px rgba(30, 25, 20, .06), 0 8px 24px rgba(30, 25, 20, .05);
   color-scheme: light;
@@ -26,6 +28,8 @@
     --accent-soft: #33222a;
     --ok: #7fc39a;
     --warn: #e0a763;
+    --warn-bg: #3a2a14;
+    --warn-line: #7a5a2a;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
     color-scheme: dark;
   }
@@ -119,6 +123,7 @@ button:hover { border-color: var(--ink-soft); }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover { filter: brightness(1.08); }
 button.ghost { background: transparent; }
+button.ghost.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button:disabled { opacity: .5; cursor: not-allowed; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
 .actions .spacer { margin-left: auto; }
@@ -209,16 +214,47 @@ tfoot td { padding: 10px 8px; font-weight: 700; border-top: 2px solid var(--ink)
 
 /* ---------- cartons ouverts ---------- */
 .open-carton {
-  margin-top: 6px; padding: 5px 8px; border-radius: 6px;
-  background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--warn);
-  font-size: .8rem; color: var(--ink-soft);
+  margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+  background: var(--warn-bg); border: 1px solid var(--warn-line);
+  border-left: 4px solid var(--warn);
+  font-size: .82rem; color: var(--ink);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
 }
 .open-carton.mine { border-left-color: var(--accent); }
-.open-carton b { color: var(--ink); }
-button.mini { padding: 2px 8px; font-size: .75rem; border-radius: 5px; }
+.open-carton b { color: var(--warn); }
+.open-carton.mine b { color: var(--accent); }
+.open-txt { flex: 1 1 180px; line-height: 1.4; }
+.open-txt .qui { color: var(--ink-soft); font-size: .78rem; }
+
+.slots { display: inline-flex; gap: 2px; align-items: flex-end; flex: 0 0 auto; }
+.slot { display: block; width: 13px; }
+.slot svg { display: block; width: 13px; height: 30px; }
+.slot.pleine svg path { fill: var(--warn); }
+.slot.vide svg path {
+  fill: var(--panel); stroke: var(--warn); stroke-width: 1.1; opacity: .5;
+}
+.open-carton.mine .slot.pleine svg path { fill: var(--accent); }
+.open-carton.mine .slot.vide svg path { stroke: var(--accent); }
+
+.jauge {
+  display: block; width: 90px; height: 10px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--warn-line); overflow: hidden;
+}
+.jauge > span { display: block; height: 100%; background: var(--warn); }
+
+button.mini {
+  padding: 5px 10px; font-size: .78rem; border-radius: 6px;
+  background: var(--warn); border-color: var(--warn); color: #fff;
+}
+button.mini:hover { filter: brightness(1.08); border-color: var(--warn); }
 .att, .wine-meta.att { color: var(--warn); }
 .wine-meta.ok { color: var(--ok); }
 .fig.att b { color: var(--warn); font-size: 1rem; }
 tfoot tr.att td { border-top: 1px solid var(--line); font-weight: 600; color: var(--warn); }
 .note.warn { border-left-color: var(--warn); }
 .note.warn ul { padding-left: 18px; }
+
+@media (prefers-color-scheme: dark) {
+  /* fond orange clair en sombre : le texte du bouton doit rester lisible */
+  button.mini { color: #17151a; }
+}
