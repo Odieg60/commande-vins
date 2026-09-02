@@ -425,10 +425,31 @@
     });
   }
 
+  // Les lignes relues du Google Sheet ne portent pas le domaine/region (colonne
+  // absente de l'onglet Lignes) : on le recupere dans le catalogue via la
+  // reference, sinon le formulaire agrege perd ses intertitres.
+  function enrichir(l) {
+    var w = BY_REF[l.ref] || {};
+    return {
+      ref: l.ref,
+      nom: l.nom || w.nom,
+      appellation: l.appellation || w.appellation,
+      couleur: l.couleur || w.couleur,
+      cl: l.cl || w.cl,
+      mill: l.mill || w.mill,
+      emb: l.emb || w.emb,
+      btl: l.btl || w.btl,
+      groupe: l.groupe || w.groupe || 'Autres',
+      prix_ht: l.prix_ht,
+      cartons: Number(l.cartons) || 0,
+      bouteilles: Number(l.bouteilles) || 0
+    };
+  }
+
   function aggregate() {
     var map = {};
     adminData.forEach(function (o) {
-      (o.lignes || []).forEach(function (l) {
+      (o.lignes || []).map(enrichir).forEach(function (l) {
         var a = map[l.ref] || (map[l.ref] = {
           ref: l.ref, nom: l.nom, appellation: l.appellation, couleur: l.couleur,
           cl: l.cl, mill: l.mill, emb: l.emb, btl: l.btl, groupe: l.groupe,
@@ -442,9 +463,10 @@
       });
     });
     var arr = Object.keys(map).map(function (k) { return map[k]; });
+    var rang = function (g) { var i = GROUPES.indexOf(g); return i === -1 ? 999 : i; };
     arr.sort(function (a, b) {
-      var g = GROUPES.indexOf(a.groupe) - GROUPES.indexOf(b.groupe);
-      return g !== 0 ? g : a.nom.localeCompare(b.nom, 'fr');
+      var g = rang(a.groupe) - rang(b.groupe);
+      return g !== 0 ? g : String(a.nom).localeCompare(String(b.nom), 'fr');
     });
     return arr;
   }
@@ -506,7 +528,7 @@
       '<th class="num">Cartons</th><th class="num">Bouteilles</th><th class="num">Total TTC</th></tr></thead><tbody>';
     var ttcSum = 0;
     adminData.slice().sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }).forEach(function (o) {
-      var t = (o.lignes || []).reduce(function (s, l) { return s + ttc(l.prix_ht) * l.bouteilles; }, 0);
+      var t = (o.lignes || []).map(enrichir).reduce(function (s, l) { return s + ttc(l.prix_ht) * l.bouteilles; }, 0);
       ttcSum += t;
       h += '<tr><td class="ref">' + esc(o.id) + '<div class="wine-meta">' +
         esc(new Date(o.date).toLocaleString('fr-CH')) + '</div></td>' +
@@ -514,7 +536,7 @@
         '<td class="wine-meta">' + esc(o.email) + (o.tel ? '<br>' + esc(o.tel) : '') + '</td>' +
         '<td class="num">' + o.total_cartons + '</td><td class="num">' + o.total_bouteilles + '</td>' +
         '<td class="num"><b>' + nf.format(t) + '</b></td></tr>';
-      (o.lignes || []).forEach(function (l) {
+      (o.lignes || []).map(enrichir).forEach(function (l) {
         h += '<tr><td></td><td colspan="2" class="wine-meta">' + esc(l.ref + ' — ' + l.nom + ' (' + l.cl + ', ' + l.mill + ')') + '</td>' +
           '<td class="num wine-meta">' + l.cartons + '</td><td class="num wine-meta">' + l.bouteilles + '</td>' +
           '<td class="num wine-meta">' + nf.format(ttc(l.prix_ht) * l.bouteilles) + '</td></tr>';
@@ -588,7 +610,7 @@
   function csvDet() {
     var rows = [['Commande', 'Date', 'Prenom', 'Nom', 'Email', 'Tel', 'Ref', 'Designation', 'cl', 'Mill', 'Cartons', 'Bouteilles', 'Prix bt HT', 'Total HT', 'Total TTC']];
     adminData.forEach(function (o) {
-      (o.lignes || []).forEach(function (l) {
+      (o.lignes || []).map(enrichir).forEach(function (l) {
         rows.push([o.id, o.date, o.prenom, o.nom, o.email, o.tel || '', l.ref, l.nom, l.cl, l.mill,
           l.cartons, l.bouteilles, l.prix_ht.toFixed(2),
           (l.prix_ht * l.bouteilles).toFixed(2), (ttc(l.prix_ht) * l.bouteilles).toFixed(2)]);
