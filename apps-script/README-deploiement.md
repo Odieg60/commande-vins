@@ -21,6 +21,7 @@ Objectif : la page web peut **écrire** les commandes, mais le Google Sheet rest
 | `SHEET_ID` | l'ID du classeur (ou omettre si le script est lié au classeur) | non |
 | `ADMIN_USER` | `admin` (ou autre) | non (défaut `admin`) |
 | `ADMIN_PASS` | le mot de passe admin, connu de toi seul | **oui** |
+| `SUBMIT_CODE` | code d'invitation exigé pour enregistrer une commande | **oui** |
 | `NOTIFY_EMAIL` | ton e-mail, pour recevoir une copie de chaque commande | non |
 | `PAY_BENEFICIAIRE` | le nom du bénéficiaire du virement | **oui** |
 | `PAY_IBAN` | l'IBAN sur lequel les participants paient | **oui** |
@@ -28,6 +29,21 @@ Objectif : la page web peut **écrire** les commandes, mais le Google Sheet rest
 | `ORG_NAME` | nom d'expéditeur affiché, ex. `Commande vins Noël 2026` | non |
 | `ORG_EMAIL` | adresse de réponse (reply-to) des e-mails | non |
 | `ENLEVEMENT` | texte d'enlèvement, si différent du défaut | non |
+
+`SUBMIT_CODE` protège l'endpoint : sans lui, n'importe qui connaissant l'URL du
+Web App pourrait poster une commande et se faire envoyer l'IBAN par e-mail. Le
+lien à diffuser (WhatsApp) devient donc :
+
+```
+https://odieg60.github.io/commande-vins/?c=LE_CODE
+```
+
+La page lit `c` dans l'URL et l'envoie avec la commande ; `submit_` le compare à
+`SUBMIT_CODE` **avant** toute écriture et tout e-mail. Code faux, absent, ou
+propriété non configurée : rien n'est écrit, aucun e-mail. Le code n'est ni dans
+le dépôt ni dans `config.js` — il ne vit que dans les Script Properties et dans
+le lien que tu envoies. Pour le changer, il suffit de modifier la propriété : les
+anciens liens cessent aussitôt de fonctionner.
 
 C'est ici — et **nulle part dans le dépôt GitHub** — que vivent le bénéficiaire
 et l'IBAN : ils ne partent que dans l'e-mail de confirmation envoyé au

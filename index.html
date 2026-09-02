@@ -58,6 +58,11 @@
           <input type="text" id="f-tel" autocomplete="tel" placeholder="079 000 00 00">
           <div class="field-err"></div>
         </div>
+        <div id="grp-code" class="hidden">
+          <label for="f-code">Code d'invitation</label>
+          <input type="text" id="f-code" autocomplete="off" placeholder="reçu avec le lien">
+          <div class="field-err" id="e-code"></div>
+        </div>
       </div>
       <div class="actions">
         <button class="primary" id="btn-to-2">Continuer vers la liste des vins →</button>
@@ -112,6 +117,7 @@
         <button class="ghost" id="btn-back-2">← Modifier ma sélection</button>
         <button class="primary spacer" id="btn-submit">Valider définitivement ma commande</button>
       </div>
+      <div class="field-err" id="submit-err"></div>
     </div>
   </section>
 

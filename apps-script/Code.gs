@@ -63,7 +63,7 @@ function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents || '{}');
     switch (body.action) {
-      case 'submit': return json_(submit_(body.commande));
+      case 'submit': return json_(submit_(body.commande, body.code));
       case 'list': return json_(list_(body.user, body.pass));
       default: return json_({ ok: false, error: 'Action inconnue.' });
     }
@@ -137,7 +137,16 @@ function validate_(c) {
   return null;
 }
 
-function submit_(c) {
+function submit_(c, code) {
+  // Code d'invitation : premier controle, avant toute ecriture et tout e-mail.
+  var attendu = String(props_().getProperty('SUBMIT_CODE') || '').trim();
+  if (!attendu) {
+    return { ok: false, codeError: true, error: 'Commandes momentanément fermées (code d\'invitation non configuré).' };
+  }
+  if (String(code || '').trim().toLowerCase() !== attendu.toLowerCase()) {
+    return { ok: false, codeError: true, error: 'Code d\'invitation invalide — utilisez le lien qui vous a été envoyé.' };
+  }
+
   var err = validate_(c);
   if (err) return { ok: false, error: err };
   // Verrou : plusieurs personnes peuvent valider en même temps.
@@ -349,6 +358,7 @@ function setup() {
   Logger.log('SHEET_ID     : ' + (p.getProperty('SHEET_ID') || '(classeur actif)'));
   Logger.log('ADMIN_USER   : ' + (p.getProperty('ADMIN_USER') || 'admin (défaut)'));
   Logger.log('ADMIN_PASS   : ' + (p.getProperty('ADMIN_PASS') ? 'défini' : '*** MANQUANT ***'));
+  Logger.log('SUBMIT_CODE  : ' + (p.getProperty('SUBMIT_CODE') ? 'défini — lien d\'invitation : …/?c=' + p.getProperty('SUBMIT_CODE') : '*** MANQUANT : toutes les commandes seront refusées ***'));
   Logger.log('NOTIFY_EMAIL : ' + (p.getProperty('NOTIFY_EMAIL') || '(aucune notification)'));
   Logger.log('PAY_BENEFICIAIRE : ' + (p.getProperty('PAY_BENEFICIAIRE') || '*** MANQUANT ***'));
   Logger.log('PAY_IBAN     : ' + (p.getProperty('PAY_IBAN') || '*** MANQUANT ***'));

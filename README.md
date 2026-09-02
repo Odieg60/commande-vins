@@ -41,6 +41,18 @@ Schenk facture en HT.
 personne et total groupé sont donc eux aussi des multiples de 0.05, et les
 additions sont vérifiables à la main. Les colonnes HT restent exactes.
 
+## Code d'invitation
+
+L'enregistrement d'une commande exige un code, comparé côté serveur à la Script
+Property `SUBMIT_CODE`. Le lien à diffuser est donc
+`https://odieg60.github.io/commande-vins/?c=LE_CODE` : la page lit `c` et
+l'envoie avec la commande, et aucun champ n'est demandé au participant. Si le
+code manque (page ouverte sans `?c=`), un champ de secours apparaît pour le
+saisir à la main.
+
+Sans code valide : aucune écriture dans le Sheet, aucun e-mail. Le code n'est ni
+dans ce dépôt ni dans `config.js`. En mode local il n'est pas demandé.
+
 ## Coordonnées de paiement
 
 Elles ne sont **pas** dans ce dépôt. Le bénéficiaire et l'IBAN vivent dans les

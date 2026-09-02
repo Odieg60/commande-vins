@@ -15,6 +15,13 @@
   var LS_DRAFT = 'noel2026.brouillon';
   var LS_ORDERS = 'noel2026.commandes';
 
+  // Code d'invitation : passe dans l'URL (/?c=LE_CODE), verifie cote serveur
+  // contre la Script Property SUBMIT_CODE. Jamais stocke dans le depot.
+  var CODE_URL = (function () {
+    try { return (new URLSearchParams(location.search).get('c') || '').trim(); }
+    catch (e) { return ''; }
+  })();
+
   var BY_REF = {};
   CAT.forEach(function (w) { BY_REF[w.ref] = w; });
 
@@ -108,6 +115,7 @@
     identite: { prenom: '', nom: '', email: '', tel: '' },
     lignes: {},            // { ref: nbCartons }
     filtres: { q: '', groupe: '', couleur: '', onlyPicked: false },
+    code: CODE_URL,        // code d'invitation (URL, sinon champ de secours)
     identiteOk: false,     // l'étape 1 doit être validée avant les étapes 2 et 3
     step: 1
   };
@@ -118,12 +126,13 @@
       var d = JSON.parse(raw);
       if (d && d.identite) state.identite = d.identite;
       if (d && d.lignes) state.lignes = d.lignes;
+      if (!state.code && d && d.code) state.code = d.code;   // survit a un rechargement sans ?c=
     }
   } catch (e) { /* brouillon illisible : on ignore */ }
 
   function saveDraft() {
     try {
-      localStorage.setItem(LS_DRAFT, JSON.stringify({ identite: state.identite, lignes: state.lignes }));
+      localStorage.setItem(LS_DRAFT, JSON.stringify({ identite: state.identite, lignes: state.lignes, code: state.code }));
     } catch (e) { /* quota / navigation privée : sans conséquence */ }
   }
 
@@ -179,7 +188,7 @@
         localStorage.setItem(LS_ORDERS, JSON.stringify(all));
         return Promise.resolve({ ok: true, id: order.id, mode: 'local' });
       }
-      return this.post({ action: 'submit', commande: order });
+      return this.post({ action: 'submit', code: state.code, commande: order });
     },
 
     list: function (user, pass) {
@@ -243,6 +252,15 @@
     $('e-prenom').textContent = ''; $('e-nom').textContent = ''; $('e-email').textContent = '';
     if (!i.prenom) { $('e-prenom').textContent = 'Prénom obligatoire.'; ok = false; }
     if (!i.nom) { $('e-nom').textContent = 'Nom obligatoire.'; ok = false; }
+    if ($('f-code') && !$('f-code').classList.contains('hidden')) {
+      // champ de secours affiche : on prend ce qui y est tape
+      if ($('f-code').value.trim()) state.code = $('f-code').value.trim();
+    }
+    $('e-code').textContent = '';
+    if (Store.remote() && !state.code) {
+      $('e-code').textContent = 'Code d\'invitation obligatoire — utilisez le lien qui vous a été envoyé.';
+      ok = false;
+    }
     var m = analyseEmail(i.email);
     if (m.valeur !== i.email) {                 // on nettoie ce qui a ete saisi
       i.email = m.valeur; $('f-email').value = m.valeur; saveDraft();
@@ -261,7 +279,8 @@
   // avant l'envoi).
   function identiteComplete() {
     var i = state.identite;
-    return !!(i.prenom && i.nom && !analyseEmail(i.email).erreur);
+    return !!(i.prenom && i.nom && !analyseEmail(i.email).erreur &&
+      (!Store.remote() || state.code));
   }
 
   /* ------------------------------ étape 2 -------------------------------- */
@@ -426,8 +445,21 @@
     }
     var btn = $('btn-submit');
     btn.disabled = true; btn.textContent = 'Envoi…';
+    $('submit-err').textContent = '';
     var order = makeOrder();
     Store.submit(order).then(function (res) {
+      if (res && res.codeError) {
+        // Code refuse : on ramene la personne a l'etape 1, champ visible et pret.
+        state.code = '';
+        state.identiteOk = false;
+        saveDraft();
+        $('grp-code').classList.remove('hidden');
+        $('e-code').textContent = res.error;
+        $('f-code').value = '';
+        show(1);
+        $('f-code').focus();
+        return;
+      }
       if (!res || !res.ok) throw new Error((res && res.error) || 'Réponse inattendue du serveur.');
       var t = totaux(lignes());
       $('done-text').innerHTML = 'Merci ' + esc(state.identite.prenom) + '. Votre commande <b>' + esc(res.id || order.id) +
@@ -456,7 +488,8 @@
       state.lignes = {}; saveDraft();
       show('done');
     }).catch(function (err) {
-      alert('Envoi impossible : ' + err.message + '\nVotre sélection est conservée, réessayez.');
+      $('submit-err').textContent = 'Envoi impossible : ' + err.message +
+        ' Votre sélection est conservée.';
     }).then(function () {
       btn.disabled = false; btn.textContent = 'Valider définitivement ma commande';
     });
@@ -686,6 +719,11 @@
   function bind() {
     // Le badge n'a d'utilite qu'en local (pour ne pas croire qu'on ecrit en base).
     $('mode-badge').classList.toggle('hidden', Store.remote());
+    // Le champ n'apparait que si le code n'est pas deja dans l'URL (ni memorise).
+    $('grp-code').classList.toggle('hidden', !Store.remote() || !!state.code);
+    $('f-code').addEventListener('input', function () {
+      state.code = this.value.trim(); saveDraft();
+    });
     $('h-deadline').textContent = CFG.deadline;
     $('h-paiement').innerHTML = 'Paiement avant le <b>' + esc(CFG.deadlinePaiement) + '</b> · ' + payLine(' · ');
 
@@ -774,6 +812,9 @@
   /* -------------------------------- init --------------------------------- */
   initFiltres();
   fillIdentite();
+  // Le code arrive dans l'URL : on le memorise tout de suite, pour qu'un simple
+  // rechargement (sans ?c=) ne le perde pas.
+  if (CODE_URL) saveDraft();
   state.identiteOk = identiteComplete();
   bind();
   renderCatalogue();
