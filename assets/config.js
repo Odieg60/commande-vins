@@ -22,7 +22,17 @@ window.CONFIG = {
   adminPassLocal: "noel2026",
 
   // Informations affichées dans l'app.
-  deadline: "30.09.2026",
+  // Délai INTERNE donné aux participants : il doit rester avant celui de Schenk
+  // (30.09.2026), le temps d'agréger et de transmettre la commande groupée.
+  deadline: "25.09.2026",
+
+  // Paiement : à REMPLIR avec le vrai bénéficiaire et le vrai IBAN.
+  // Ces deux valeurs s'affichent dans l'en-tête, le récapitulatif et la
+  // confirmation de commande.
+  deadlinePaiement: "30.09.2026",
+  beneficiaire: "XXXX YYYYY",
+  iban: "XXXSBBDSJAKDJSA",
+
   enlevement: "du 12.10 au 13.11.2026, sur préavis de min. 72 h au 021 822 02 45",
   contact: "vente@schenk-wine.ch"
 };

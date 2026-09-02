@@ -285,8 +285,9 @@
     $('recap-table').innerHTML = tableLignes(ls, t);
     $('recap-note').innerHTML =
       'Total <b>TTC</b> (TVA ' + pctTVA() + ' % incluse, prix arrondis au 5 ct supérieur) : <b>' + chf(t.ttc) + '</b>.<br>' +
-      'Commandes jusqu\'au ' + esc(CFG.deadline) + ' · enlèvement ' + esc(CFG.enlevement) + '.<br>' +
-      'Paiement à 30 jours nets après enlèvement, au plus tard le 18.12.2026.';
+      'Commandes jusqu\'au ' + esc(CFG.deadline) + ' · <b>paiement avant le ' + esc(CFG.deadlinePaiement) + '</b>.<br>' +
+      'À payer à ' + esc(CFG.beneficiaire) + ' · IBAN ' + esc(CFG.iban) + '.<br>' +
+      'Enlèvement ' + esc(CFG.enlevement) + '.';
   }
 
   function tableLignes(ls, t) {
@@ -339,6 +340,11 @@
       $('done-text').innerHTML = 'Merci ' + esc(state.identite.prenom) + '. Votre commande <b>' + esc(res.id || order.id) +
         '</b> est enregistrée : <b>' + t.cartons + ' carton(s)</b>, ' + t.bouteilles + ' bouteilles, <b>' + chf(t.ttc) + '</b> TTC.' +
         (Store.remote() ? '' : '<br><small>Mode local : la commande est stockée dans ce navigateur uniquement.</small>');
+      $('done-paiement').innerHTML =
+        '<b>Paiement</b> : ' + chf(t.ttc) + ' à verser avant le <b>' + esc(CFG.deadlinePaiement) + '</b><br>' +
+        'Bénéficiaire : <b>' + esc(CFG.beneficiaire) + '</b><br>' +
+        'IBAN : <b>' + esc(CFG.iban) + '</b><br>' +
+        'Référence à indiquer : <b>' + esc(state.identite.prenom + ' ' + state.identite.nom + ' — ' + (res.id || order.id)) + '</b>';
       $('done-table').innerHTML = tableLignes(lignes(), t);
       state.lignes = {}; saveDraft();
       show('done');
@@ -550,6 +556,9 @@
   /* ------------------------------ événements ----------------------------- */
   function bind() {
     $('mode-badge').textContent = Store.remote() ? 'Google Sheet' : 'local';
+    $('h-deadline').textContent = CFG.deadline;
+    $('h-paiement').innerHTML = 'À payer à <b>' + esc(CFG.beneficiaire) + '</b> · IBAN <b>' + esc(CFG.iban) + '</b>' +
+      ' · avant le <b>' + esc(CFG.deadlinePaiement) + '</b>';
 
     $('btn-to-2').addEventListener('click', function () {
       if (validIdentite()) { renderCatalogue(); show(2); }

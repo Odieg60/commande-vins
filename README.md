@@ -26,6 +26,23 @@ Schenk facture en HT.
 personne et total groupé sont donc eux aussi des multiples de 0.05, et les
 additions sont vérifiables à la main. Les colonnes HT restent exactes.
 
+## Coordonnées de paiement — à remplir
+
+`assets/config.js` contient trois valeurs de paiement affichées dans l'en-tête,
+le récapitulatif et la confirmation de commande :
+
+```js
+deadlinePaiement: "30.09.2026",
+beneficiaire: "XXXX YYYYY",        // ← à remplacer
+iban: "XXXSBBDSJAKDJSA",           // ← à remplacer
+```
+
+Tant qu'elles ne sont pas remplacées, les participants voient les placeholders.
+Le dépôt étant public, ce sont des coordonnées destinées à être partagées avec
+les dix participants — un IBAN n'est pas un secret, mais il sera visible de tous
+sur GitHub : si ça te gêne, passe le dépôt en privé (GitHub Pages reste
+disponible) ou n'y mets que le nom du bénéficiaire.
+
 ## Version locale (aucune installation)
 
 Ouvrir `index.html` dans un navigateur (double-clic suffit).
@@ -72,7 +89,8 @@ apps-script/README-deploiement.md  procédure de mise en production
 
 ## Rappels de la liste Schenk
 
-- Commandes jusqu'au **30.09.2026**.
+- Commandes jusqu'au **30.09.2026** (l'app annonce le **25.09.2026** aux
+  participants, pour laisser le temps d'agréger et de transmettre).
 - Enlèvement du **12.10 au 13.11.2026**, sur préavis de min. 72 h au 021 822 02 45.
 - Sites : Rolle, Vevey, Waltenschwil, Chamoson, Sion, Penthalaz.
 - Paiement à 30 jours nets après enlèvement, au plus tard le 18.12.2026.
