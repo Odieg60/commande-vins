@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commande vins — Noël 2026</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%B7%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <h1>Commande groupée de vins — Noël 2026</h1>
+      <small>Liste Schenk / Obrist — commandes jusqu'au <b>30.09.2026</b> · enlèvement du 12.10 au 13.11.2026</small>
+    </div>
+    <span class="badge" id="mode-badge">local</span>
+    <button class="ghost" id="btn-admin">Admin</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- stepper -->
+  <div class="steps" id="steps">
+    <div class="step on" data-step="1"><i>1</i> Vos coordonnées</div>
+    <div class="step-sep"></div>
+    <div class="step" data-step="2"><i>2</i> Choix des cartons</div>
+    <div class="step-sep"></div>
+    <div class="step" data-step="3"><i>3</i> Récapitulatif</div>
+  </div>
+
+  <!-- ÉTAPE 1 -->
+  <section id="view-1" class="view">
+    <div class="card">
+      <h2>Vos coordonnées</h2>
+      <p class="muted">Une seule commande par personne. Vos coordonnées servent uniquement à préparer la commande groupée.</p>
+      <div class="grid2">
+        <div>
+          <label for="f-prenom">Prénom</label>
+          <input type="text" id="f-prenom" autocomplete="given-name">
+          <div class="field-err" id="e-prenom"></div>
+        </div>
+        <div>
+          <label for="f-nom">Nom</label>
+          <input type="text" id="f-nom" autocomplete="family-name">
+          <div class="field-err" id="e-nom"></div>
+        </div>
+        <div>
+          <label for="f-email">E-mail</label>
+          <input type="email" id="f-email" autocomplete="email" placeholder="prenom.nom@exemple.ch">
+          <div class="field-err" id="e-email"></div>
+        </div>
+        <div>
+          <label for="f-tel">Téléphone <span class="muted">(optionnel)</span></label>
+          <input type="text" id="f-tel" autocomplete="tel" placeholder="079 000 00 00">
+          <div class="field-err"></div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="btn-to-2">Continuer vers la liste des vins →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ÉTAPE 2 -->
+  <section id="view-2" class="view hidden">
+    <div class="note" style="margin-bottom:14px">
+      Les quantités se choisissent <b>uniquement par carton entier</b> (6, 12, 24 ou 3 bouteilles selon la référence).
+      Les prix affichés sont <b>TTC</b>, TVA <span id="tva-label">8.1</span>% incluse.
+    </div>
+
+    <div class="toolbar">
+      <div class="f search">
+        <label for="f-search">Recherche</label>
+        <input type="text" id="f-search" placeholder="nom, appellation, référence…">
+      </div>
+      <div class="f">
+        <label for="f-groupe">Domaine / région</label>
+        <select id="f-groupe"><option value="">Tous</option></select>
+      </div>
+      <div class="f">
+        <label for="f-couleur">Couleur</label>
+        <select id="f-couleur">
+          <option value="">Toutes</option>
+          <option value="blanc">Blanc</option>
+          <option value="rouge">Rouge</option>
+          <option value="rosé">Rosé</option>
+        </select>
+      </div>
+      <div class="f" style="flex:0 0 auto">
+        <label>&nbsp;</label>
+        <button class="ghost" id="btn-only-picked">Ma sélection</button>
+      </div>
+    </div>
+
+    <div id="catalogue"></div>
+  </section>
+
+  <!-- ÉTAPE 3 -->
+  <section id="view-3" class="view hidden">
+    <div class="card">
+      <h2>Récapitulatif de votre commande</h2>
+      <dl class="kv" id="recap-id"></dl>
+      <div class="scroll-x" style="margin-top:16px">
+        <table id="recap-table"></table>
+      </div>
+      <div class="note" style="margin-top:14px" id="recap-note"></div>
+      <div class="actions">
+        <button class="ghost" id="btn-back-2">← Modifier ma sélection</button>
+        <button class="primary spacer" id="btn-submit">Valider définitivement ma commande</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONFIRMATION -->
+  <section id="view-done" class="view hidden">
+    <div class="card">
+      <p class="big-ok">Commande enregistrée</p>
+      <p id="done-text" class="muted"></p>
+      <div class="scroll-x"><table id="done-table"></table></div>
+      <div class="actions">
+        <button class="ghost" id="btn-print-done">Imprimer / PDF</button>
+        <button class="ghost" id="btn-new">Nouvelle commande</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ADMIN -->
+  <section id="view-admin" class="view hidden">
+    <div class="card" id="admin-login">
+      <h2>Espace administrateur</h2>
+      <p class="muted">Agrégation de toutes les commandes en un seul formulaire.</p>
+      <div class="grid2">
+        <div>
+          <label for="a-user">Utilisateur</label>
+          <input type="text" id="a-user" autocomplete="username">
+        </div>
+        <div>
+          <label for="a-pass">Mot de passe</label>
+          <input type="password" id="a-pass" autocomplete="current-password">
+        </div>
+      </div>
+      <div class="field-err" id="a-err"></div>
+      <div class="actions">
+        <button class="ghost" id="btn-admin-back">← Retour</button>
+        <button class="primary spacer" id="btn-admin-login">Se connecter</button>
+      </div>
+    </div>
+
+    <div id="admin-panel" class="hidden">
+      <div class="card">
+        <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">
+          <div style="margin-right:auto">
+            <h2>Commande groupée — Noël 2026</h2>
+            <small id="admin-sub"></small>
+          </div>
+          <button class="ghost no-print" id="btn-refresh">Rafraîchir</button>
+          <button class="ghost no-print" id="btn-csv-agg">CSV agrégé</button>
+          <button class="ghost no-print" id="btn-csv-det">CSV détaillé</button>
+          <button class="ghost no-print" id="btn-print-admin">Imprimer / PDF</button>
+        </div>
+        <div class="tabs" style="margin-top:14px">
+          <button class="on" data-tab="agg">Formulaire agrégé</button>
+          <button data-tab="people">Par personne</button>
+        </div>
+        <div id="admin-content"></div>
+      </div>
+      <div class="actions no-print">
+        <button class="ghost" id="btn-admin-out">Quitter l'espace admin</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- barre de total -->
+<div class="totalbar hidden" id="totalbar">
+  <div class="totalbar-inner">
+    <div class="figures">
+      <div class="fig"><b id="t-cartons">0</b><span>cartons</span></div>
+      <div class="fig"><b id="t-bouteilles">0</b><span>bouteilles</span></div>
+      <div class="fig"><b id="t-refs">0</b><span>références</span></div>
+      <div class="fig big"><b id="t-total">CHF 0.00</b><span>total TTC</span></div>
+    </div>
+    <button class="ghost" id="btn-back-1">← Coordonnées</button>
+    <button class="primary" id="btn-to-3">Voir le récapitulatif →</button>
+  </div>
+</div>
+
+<script src="assets/catalogue.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
