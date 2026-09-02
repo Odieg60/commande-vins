@@ -79,10 +79,27 @@ function doGet() {
 
 /* ---------------------------------------------------------------- écriture */
 
-function submit_(c) {
-  if (!c || !c.email || !c.lignes || !c.lignes.length) {
-    return { ok: false, error: 'Commande vide ou incomplète.' };
+// L'etape 1 est obligatoire cote serveur aussi : une requete forgee sans
+// coordonnees valides est refusee, sinon le Sheet se remplit de lignes
+// inexploitables (impossible de savoir a qui facturer ni ou envoyer l'e-mail).
+function validate_(c) {
+  if (!c) return 'Commande absente.';
+  if (!String(c.prenom || '').trim()) return 'Prénom obligatoire.';
+  if (!String(c.nom || '').trim()) return 'Nom obligatoire.';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(c.email || '').trim())) return 'E-mail invalide.';
+  if (!c.lignes || !c.lignes.length) return 'Commande vide.';
+  for (var i = 0; i < c.lignes.length; i++) {
+    var l = c.lignes[i];
+    if (!l.ref || !(Number(l.cartons) > 0) || !(Number(l.bouteilles) > 0)) {
+      return 'Ligne de commande invalide (' + (l.ref || '?') + ').';
+    }
   }
+  return null;
+}
+
+function submit_(c) {
+  var err = validate_(c);
+  if (err) return { ok: false, error: err };
   // Verrou : plusieurs personnes peuvent valider en même temps.
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);

@@ -54,6 +54,7 @@
     identite: { prenom: '', nom: '', email: '', tel: '' },
     lignes: {},            // { ref: nbCartons }
     filtres: { q: '', groupe: '', couleur: '', onlyPicked: false },
+    identiteOk: false,     // l'étape 1 doit être validée avant les étapes 2 et 3
     step: 1
   };
 
@@ -144,6 +145,12 @@
 
   /* ---------------------------- navigation ------------------------------- */
   function show(step) {
+    // Etape 1 obligatoire : aucun acces au catalogue ni au recapitulatif sans
+    // prenom, nom et e-mail valides.
+    if ((step === 2 || step === 3) && !state.identiteOk) {
+      step = 1;
+      $('e-nom').textContent = 'Renseignez vos coordonnées avant de choisir vos vins.';
+    }
     state.step = step;
     ['1', '2', '3', 'done', 'admin'].forEach(function (k) {
       $('view-' + k).classList.toggle('hidden', String(step) !== k);
@@ -183,7 +190,15 @@
     if (!i.prenom) { $('e-prenom').textContent = 'Prénom obligatoire.'; ok = false; }
     if (!i.nom) { $('e-nom').textContent = 'Nom obligatoire.'; ok = false; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(i.email)) { $('e-email').textContent = 'E-mail invalide.'; ok = false; }
+    state.identiteOk = ok;
     return ok;
+  }
+
+  // Verifie l'identite sans afficher d'erreur (reprise d'un brouillon, garde-fou
+  // avant l'envoi).
+  function identiteComplete() {
+    var i = state.identite;
+    return !!(i.prenom && i.nom && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(i.email));
   }
 
   /* ------------------------------ étape 2 -------------------------------- */
@@ -340,6 +355,12 @@
   }
 
   function submit() {
+    if (!identiteComplete()) {          // ceinture et bretelles avant l'envoi
+      state.identiteOk = false;
+      show(1);
+      validIdentite();
+      return;
+    }
     var btn = $('btn-submit');
     btn.disabled = true; btn.textContent = 'Envoi…';
     var order = makeOrder();
@@ -585,11 +606,19 @@
     $('btn-submit').addEventListener('click', submit);
     $('btn-print-done').addEventListener('click', function () { window.print(); });
     $('btn-new').addEventListener('click', function () {
-      state.lignes = {}; saveDraft(); fillIdentite(); show(1);
+      state.lignes = {};
+      state.identite = { prenom: '', nom: '', email: '', tel: '' };
+      state.identiteOk = false;
+      saveDraft(); fillIdentite();
+      $('e-prenom').textContent = ''; $('e-nom').textContent = ''; $('e-email').textContent = '';
+      show(1);
     });
 
     ['f-prenom', 'f-nom', 'f-email', 'f-tel'].forEach(function (id) {
-      $(id).addEventListener('input', readIdentite);
+      $(id).addEventListener('input', function () {
+        readIdentite();
+        state.identiteOk = identiteComplete();
+      });
     });
 
     $('f-search').addEventListener('input', function () { state.filtres.q = this.value; renderCatalogue(); });
@@ -616,7 +645,9 @@
 
     // admin
     $('btn-admin').addEventListener('click', function () { show('admin'); });
-    $('btn-admin-back').addEventListener('click', function () { show(state.lignes && Object.keys(state.lignes).length ? 2 : 1); });
+    $('btn-admin-back').addEventListener('click', function () {
+      show(state.identiteOk && Object.keys(state.lignes).length ? 2 : 1);
+    });
     $('btn-admin-login').addEventListener('click', adminLogin);
     $('a-pass').addEventListener('keydown', function (e) { if (e.key === 'Enter') adminLogin(); });
     $('btn-admin-out').addEventListener('click', function () {
@@ -642,6 +673,7 @@
   /* -------------------------------- init --------------------------------- */
   initFiltres();
   fillIdentite();
+  state.identiteOk = identiteComplete();
   bind();
   renderCatalogue();
   show(1);

@@ -6,7 +6,10 @@ transmettre à `vente@schenk-wine.ch`.
 
 ## Ce que fait la page
 
-1. **Coordonnées** — prénom, nom, e-mail (téléphone optionnel).
+1. **Coordonnées** — prénom, nom, e-mail **obligatoires** (téléphone
+   optionnel). Sans eux, pas d'accès au catalogue ni au récapitulatif, et le
+   contrôle est refait côté serveur : une requête forgée sans coordonnées
+   valides est rejetée par l'Apps Script.
 2. **Choix des vins** — les 144 références du PDF, groupées par domaine/région,
    avec recherche, filtres couleur et domaine. Les quantités se choisissent
    **uniquement par carton entier** (6, 12, 24 ou 3 bouteilles selon la
