@@ -25,9 +25,10 @@ transmettre à `vente@schenk-wine.ch`.
 3. **Récapitulatif** puis validation : la commande est stockée avec le détail
    ligne par ligne.
 4. **E-mail de confirmation** (en production) : le participant reçoit
-   automatiquement le récapitulatif de sa commande avec le montant, le
-   bénéficiaire, l'IBAN, l'échéance et la référence à indiquer au virement.
-   L'organisateur en reçoit une copie s'il a renseigné `NOTIFY_EMAIL`.
+   automatiquement le récapitulatif de sa commande avec le montant à payer, le
+   **numéro TWINT** du destinataire, l'échéance et la référence à indiquer dans
+   le message du paiement. L'organisateur en reçoit une copie s'il a renseigné
+   `NOTIFY_EMAIL`.
 5. **Espace admin** (utilisateur + mot de passe) : toutes les commandes
    individuelles, le **formulaire agrégé** par référence (cartons, nombre de
    bouteilles, totaux), export CSV et impression/PDF.
@@ -79,9 +80,9 @@ dans ce dépôt ni dans `config.js`. En mode local il n'est pas demandé.
 
 ## Coordonnées de paiement
 
-Elles ne sont **pas** dans ce dépôt. Le bénéficiaire et l'IBAN vivent dans les
-*Script Properties* de l'Apps Script (`PAY_BENEFICIAIRE`, `PAY_IBAN`) et ne
-partent que dans l'e-mail de confirmation envoyé au participant. La page se
+Elles ne sont **pas** dans ce dépôt. Le numéro TWINT (`PAY_TWINT_TEL`,
+`PAY_TWINT_NOM`) et l'éventuel IBAN vivent dans les *Script Properties* de
+l'Apps Script et ne partent que dans l'e-mail envoyé au participant. La page se
 contente d'annoncer l'échéance (`deadlinePaiement` dans `assets/config.js`) et
 que les coordonnées arrivent par e-mail.
 

@@ -438,6 +438,10 @@ function infosPaiement_() {
   var p = props_();
   return {
     benef: p.getProperty('PAY_BENEFICIAIRE') || '',
+    // TWINT : moyen de paiement principal. Le numero vit dans les Script
+    // Properties, jamais dans le depot GitHub (qui est public).
+    twintTel: String(p.getProperty('PAY_TWINT_TEL') || '').trim(),
+    twintNom: String(p.getProperty('PAY_TWINT_NOM') || '').trim(),
     iban: p.getProperty('PAY_IBAN') || '',
     echeance: p.getProperty('PAY_DEADLINE') || '',
     orgName: p.getProperty('ORG_NAME') || 'Commande groupée Noël 2026',
@@ -448,17 +452,48 @@ function infosPaiement_() {
 
 function blocPaiement_(montant, ref, titre) {
   var i = infosPaiement_();
-  return '<h3 style="margin:22px 0 6px">' + (titre || 'Paiement') + '</h3>' +
+  var nom = i.twintNom || i.benef;
+
+  var h = '<h3 style="margin:22px 0 6px">' + (titre || 'Paiement') + '</h3>' +
     '<table cellpadding="4" cellspacing="0" border="0" style="font:14px Helvetica,Arial,sans-serif">' +
     '<tr><td style="color:#6b6660">Montant</td><td><b>' + money_(montant) + '</b> (TTC)</td></tr>' +
-    (i.echeance ? '<tr><td style="color:#6b6660">À payer avant le</td><td><b>' + esc_(i.echeance) + '</b></td></tr>' : '') +
-    (i.benef ? '<tr><td style="color:#6b6660">Bénéficiaire</td><td><b>' + esc_(i.benef) + '</b></td></tr>' : '') +
-    (i.iban ? '<tr><td style="color:#6b6660">IBAN</td><td><b>' + esc_(i.iban) + '</b></td></tr>' : '') +
-    '<tr><td style="color:#6b6660">Référence</td><td><b>' + esc_(ref) + '</b></td></tr>' +
-    '</table>' +
-    (i.benef && i.iban ? '' :
-      '<p style="color:#a45b12;font:13px Helvetica,Arial,sans-serif">Les coordonnées bancaires ne sont pas encore ' +
-      'configurées (Script Properties PAY_BENEFICIAIRE et PAY_IBAN) — elles vous seront transmises séparément.</p>');
+    (i.echeance ? '<tr><td style="color:#6b6660">À payer avant le</td><td><b>' + esc_(i.echeance) + '</b></td></tr>' : '');
+
+  if (i.twintTel) {
+    h += '<tr><td style="color:#6b6660">Moyen de paiement</td><td><b>TWINT</b></td></tr>' +
+      (nom ? '<tr><td style="color:#6b6660">À</td><td><b>' + esc_(nom) + '</b></td></tr>' : '') +
+      '<tr><td style="color:#6b6660">Numéro TWINT</td><td><b>' + esc_(i.twintTel) + '</b></td></tr>';
+  } else if (i.benef) {
+    h += '<tr><td style="color:#6b6660">Bénéficiaire</td><td><b>' + esc_(i.benef) + '</b></td></tr>';
+  }
+  if (i.iban) {
+    h += '<tr><td style="color:#6b6660">IBAN' + (i.twintTel ? ' (si pas de TWINT)' : '') +
+      '</td><td><b>' + esc_(i.iban) + '</b></td></tr>';
+  }
+  h += '<tr><td style="color:#6b6660">Message / référence</td><td><b>' + esc_(ref) + '</b></td></tr></table>';
+
+  if (i.twintTel) {
+    h += '<p style="margin:6px 0 0;color:#6b6660;font:13px Helvetica,Arial,sans-serif">' +
+      'Dans TWINT : « Envoyer de l\'argent » → numéro <b>' + esc_(i.twintTel) + '</b>' +
+      (nom ? ' (' + esc_(nom) + ')' : '') + ' → montant <b>' + money_(montant) +
+      '</b>, et indiquez la référence ci-dessus dans le message.</p>';
+  } else if (!i.iban) {
+    h += '<p style="color:#a45b12;font:13px Helvetica,Arial,sans-serif">Les coordonnées de paiement ne sont pas ' +
+      'encore configurées (Script Properties PAY_TWINT_TEL / PAY_TWINT_NOM, ou PAY_IBAN) — elles vous seront ' +
+      'transmises séparément.</p>';
+  }
+  return h;
+}
+
+// Version texte du bloc paiement, pour la partie non-HTML des e-mails.
+function blocPaiementTexte_(montant, ref) {
+  var i = infosPaiement_();
+  var nom = i.twintNom || i.benef;
+  return '\nMontant : ' + money_(montant) +
+    (i.echeance ? '\nÀ payer avant le : ' + i.echeance : '') +
+    (i.twintTel ? '\nPar TWINT au ' + i.twintTel + (nom ? ' (' + nom + ')' : '') : (nom ? '\nBénéficiaire : ' + nom : '')) +
+    (i.iban ? '\nIBAN' + (i.twintTel ? ' (si pas de TWINT)' : '') + ' : ' + i.iban : '') +
+    '\nMessage / référence : ' + ref + '\n';
 }
 
 // Recapitulatif HTML des lignes, avec les bouteilles seules en attente.
@@ -535,8 +570,8 @@ function mailConfirmation_(c, alloc) {
     blocPaiement_(t.payer, ref) +
     (i.enlev ? '<h3 style="margin:22px 0 6px">Enlèvement</h3>' +
       '<p style="margin:0;color:#6b6660">' + esc_(i.enlev) + '.</p>' : '') +
-    '<p style="margin:22px 0 0;color:#6b6660;font-size:13px">Merci d\'indiquer la référence ci-dessus lors du virement, ' +
-    'elle permet de rapprocher votre paiement de votre commande.</p></div>';
+    '<p style="margin:22px 0 0;color:#6b6660;font-size:13px">Merci d\'indiquer la référence ci-dessus dans le message ' +
+    'du paiement, elle permet de rapprocher votre versement de votre commande.</p></div>';
 
   var plain = 'Commande ' + c.id + ' enregistrée.\n\n' +
     c.lignes.map(function (l) {
@@ -551,12 +586,8 @@ function mailConfirmation_(c, alloc) {
     '\n\nÀ PAYER : ' + money_(t.payer) +
     (t.attente > 0 ? '\nEn attente, non facturé : (' + money_(t.attente) + ')' +
       '\nCes bouteilles sont dans un carton ouvert. Si le groupe le complète, un nouvel e-mail vous indiquera le complément à payer.' : '') +
-    '\n\nPAIEMENT' +
-    (i.echeance ? '\nÀ payer avant le : ' + i.echeance : '') +
-    (i.benef ? '\nBénéficiaire : ' + i.benef : '') +
-    (i.iban ? '\nIBAN : ' + i.iban : '') +
-    '\nRéférence : ' + ref +
-    (i.enlev ? '\n\nEnlèvement : ' + i.enlev : '') + '\n';
+    '\n\nPAIEMENT' + blocPaiementTexte_(t.payer, ref) +
+    (i.enlev ? '\nEnlèvement : ' + i.enlev + '\n' : '');
 
   try {
     var opts = { name: i.orgName, htmlBody: html };
@@ -596,17 +627,13 @@ function mailCartonBoucle_(p) {
     '<td align="right"><b>' + money_(p.montant) + '</b></td></tr></table>' +
     blocPaiement_(p.montant, ref, 'Complément à payer') +
     '<p style="margin:22px 0 0;color:#6b6660;font-size:13px">Ce montant s\'ajoute à celui de votre commande initiale ' +
-    '(' + esc_(p.id) + '). Même référence de virement.</p></div>';
+    '(' + esc_(p.id) + '). Même référence.</p></div>';
 
   var plain = 'Carton bouclé — vos bouteilles en attente sont confirmées.\n\n' +
     p.lignes.map(function (l) {
       return l.ref + ' — ' + l.desig + ' : ' + l.n + ' bt. — ' + money_(l.montant);
     }).join('\n') +
-    '\n\nCOMPLÉMENT À PAYER : ' + money_(p.montant) +
-    (i.echeance ? '\nÀ payer avant le : ' + i.echeance : '') +
-    (i.benef ? '\nBénéficiaire : ' + i.benef : '') +
-    (i.iban ? '\nIBAN : ' + i.iban : '') +
-    '\nRéférence : ' + ref + '\n';
+    '\n\nCOMPLÉMENT À PAYER' + blocPaiementTexte_(p.montant, ref);
 
   try {
     var opts = { name: i.orgName, htmlBody: html };
@@ -700,8 +727,10 @@ function setup() {
   Logger.log('ADMIN_PASS   : ' + (p.getProperty('ADMIN_PASS') ? 'défini' : '*** MANQUANT ***'));
   Logger.log('SUBMIT_CODE  : ' + (p.getProperty('SUBMIT_CODE') ? 'défini — lien : …/?c=' + p.getProperty('SUBMIT_CODE') : '*** MANQUANT : toutes les commandes seront refusées ***'));
   Logger.log('NOTIFY_EMAIL : ' + (p.getProperty('NOTIFY_EMAIL') || '(aucune notification)'));
-  Logger.log('PAY_BENEFICIAIRE : ' + (p.getProperty('PAY_BENEFICIAIRE') || '*** MANQUANT ***'));
-  Logger.log('PAY_IBAN     : ' + (p.getProperty('PAY_IBAN') || '*** MANQUANT ***'));
+  Logger.log('PAY_TWINT_NOM : ' + (p.getProperty('PAY_TWINT_NOM') || '(reprend PAY_BENEFICIAIRE)'));
+  Logger.log('PAY_TWINT_TEL : ' + (p.getProperty('PAY_TWINT_TEL') || '*** MANQUANT : pas de TWINT dans l\'e-mail ***'));
+  Logger.log('PAY_BENEFICIAIRE : ' + (p.getProperty('PAY_BENEFICIAIRE') || '(aucun)'));
+  Logger.log('PAY_IBAN     : ' + (p.getProperty('PAY_IBAN') || '(aucun IBAN affiché)'));
   Logger.log('PAY_DEADLINE : ' + (p.getProperty('PAY_DEADLINE') || '(aucune échéance)'));
   Logger.log('ORG_NAME     : ' + (p.getProperty('ORG_NAME') || 'Commande groupée Noël 2026 (défaut)'));
   Logger.log('ORG_EMAIL    : ' + (p.getProperty('ORG_EMAIL') || '(pas de reply-to)'));

@@ -23,8 +23,10 @@ Objectif : la page web peut **écrire** les commandes, mais le Google Sheet rest
 | `ADMIN_PASS` | le mot de passe admin, connu de toi seul | **oui** |
 | `SUBMIT_CODE` | code d'invitation exigé pour enregistrer une commande | **oui** |
 | `NOTIFY_EMAIL` | ton e-mail, pour recevoir une copie de chaque commande | non |
-| `PAY_BENEFICIAIRE` | le nom du bénéficiaire du virement | **oui** |
-| `PAY_IBAN` | l'IBAN sur lequel les participants paient | **oui** |
+| `PAY_TWINT_TEL` | numéro TWINT sur lequel les participants paient, ex. `076 822 27 97` | **oui** |
+| `PAY_TWINT_NOM` | nom affiché à côté du numéro TWINT, ex. `Pierre-Yves André` | non (reprend `PAY_BENEFICIAIRE`) |
+| `PAY_BENEFICIAIRE` | bénéficiaire, utilisé si tu préfères un virement au TWINT | non |
+| `PAY_IBAN` | IBAN, affiché en complément du TWINT s'il est renseigné | non |
 | `PAY_DEADLINE` | échéance de paiement, ex. `30.09.2026` | non |
 | `ORG_NAME` | nom d'expéditeur affiché, ex. `Commande vins Noël 2026` | non |
 | `ORG_EMAIL` | adresse de réponse (reply-to) des e-mails | non |
@@ -45,10 +47,12 @@ le dépôt ni dans `config.js` — il ne vit que dans les Script Properties et d
 le lien que tu envoies. Pour le changer, il suffit de modifier la propriété : les
 anciens liens cessent aussitôt de fonctionner.
 
-C'est ici — et **nulle part dans le dépôt GitHub** — que vivent le bénéficiaire
-et l'IBAN : ils ne partent que dans l'e-mail de confirmation envoyé au
-participant. Si `PAY_BENEFICIAIRE` ou `PAY_IBAN` manque, l'e-mail est quand même
-envoyé, avec un avertissement à la place des coordonnées.
+C'est ici — et **nulle part dans le dépôt GitHub** — que vivent le numéro TWINT
+et l'éventuel IBAN : ils ne partent que dans l'e-mail envoyé au participant.
+Avec `PAY_TWINT_TEL` renseigné, l'e-mail affiche TWINT comme moyen de paiement
+(numéro, nom, montant, référence à mettre dans le message) et n'ajoute l'IBAN
+que si `PAY_IBAN` existe. Sans TWINT ni IBAN, l'e-mail part quand même, avec un
+avertissement à la place des coordonnées.
 
 4. Lancer une fois la fonction `setup` (menu *Exécuter*) et accepter les
    autorisations. Les onglets `Commandes` et `Lignes` sont créés, et le journal
