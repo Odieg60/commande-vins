@@ -870,6 +870,7 @@
     { v: 'Choix6', nom: 'Penthalaz', qui: 'Planzer Transport SA', ou: 'Chemin de l’Islettaz 2 — 1305 Penthalaz' }
   ];
   var LS_LIEU = 'noel2026.lieu';
+  var AUCUN_LIEU = 'aucun';   // choix explicite de ne rien cocher
 
   function lieuChoisi() {
     var c = document.querySelector('#pdf-lieux input[name="lieu"]:checked');
@@ -885,7 +886,12 @@
       return '<label class="lieu"><input type="radio" name="lieu" value="' + l.v + '"' +
         (coche ? ' checked' : '') + '><span><b>' + esc(l.nom) + '</b>' +
         esc(l.qui) + ' · ' + esc(l.ou) + '</span></label>';
-    }).join('');
+    }).join('') +
+    // Rien n'oblige a trancher maintenant : on peut laisser la case vide et
+    // cocher a la main sur le PDF, ou decider plus tard avec le fournisseur.
+    '<label class="lieu"><input type="radio" name="lieu" value="' + AUCUN_LIEU + '"' +
+    (prec === AUCUN_LIEU ? ' checked' : '') + '><span><b>Laisser vide</b>' +
+    'Aucune case cochée — vous le ferez à la main sur le document.</span></label>';
     $('pdf-panneau').classList.remove('hidden');
     $('reset-msg').textContent = '';
     $('pdf-panneau').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -937,9 +943,12 @@
           catch (e) { absentes.push(a.ref); }   // reference hors du formulaire d'origine
         });
 
-        // Lieu d'enlèvement : un seul pour toute la commande groupée.
-        try { form.getRadioGroup('Groupe1').select(lieu); }
-        catch (e) { absentes.push('lieu d’enlèvement'); }
+        // Lieu d'enlèvement : un seul pour toute la commande groupée, sauf si
+        // l'organisateur a choisi de laisser la case vide.
+        if (lieu !== AUCUN_LIEU) {
+          try { form.getRadioGroup('Groupe1').select(lieu); }
+          catch (e) { absentes.push('lieu d’enlèvement'); }
+        }
 
         var meta = { 'Date': dateDuJour() };   // Nom et Tél : à compléter à la main
         Object.keys(meta).forEach(function (k) {
@@ -955,8 +964,8 @@
           telecharger(new Blob([octets], { type: 'application/pdf' }), nom);
           var l = LIEUX.filter(function (x) { return x.v === lieu; })[0];
           $('pdf-panneau').classList.add('hidden');
-          $('reset-msg').textContent = poses + ' référence(s) reportée(s), enlèvement à ' +
-            (l ? l.nom : lieu) + '.' +
+          $('reset-msg').textContent = poses + ' référence(s) reportée(s), ' +
+            (l ? 'enlèvement à ' + l.nom : 'lieu d’enlèvement à cocher à la main') + '.' +
             (absentes.length ? ' Non trouvées dans le PDF : ' + absentes.join(', ') + '.' : '');
         });
       });
