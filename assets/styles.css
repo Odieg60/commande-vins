@@ -264,3 +264,18 @@ tfoot tr.att td { border-top: 1px solid var(--line); font-weight: 600; color: va
 .corr-actions .wine-meta { flex: 1 1 260px; }
 tr[data-l] { background: var(--accent-soft); }
 tr[data-l] .stepper input { width: 46px; }
+
+/* choix du lieu d'enlevement avant de generer le bon de commande */
+.choix-lieu {
+  margin-top: 14px; padding: 14px 16px; border-radius: 10px;
+  background: var(--panel-2); border: 1px solid var(--accent); border-left: 4px solid var(--accent);
+}
+.choix-lieu .lieu {
+  display: flex; align-items: flex-start; gap: 10px; padding: 7px 0;
+  border-bottom: 1px solid var(--line); cursor: pointer;
+}
+.choix-lieu .lieu:last-of-type { border-bottom: 0; }
+.choix-lieu .lieu input { width: auto; margin: 3px 0 0; flex: 0 0 auto; }
+.choix-lieu .lieu b { display: block; font-size: .95rem; }
+.choix-lieu .lieu span { font-size: .8rem; color: var(--ink-soft); }
+.choix-lieu .actions { margin-top: 14px; }

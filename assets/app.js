@@ -851,6 +851,122 @@
     $('admin-content').innerHTML = adminTab === 'agg' ? htmlAgg(agg, tc, tb, tht, tttc) : htmlPeople();
   }
 
+  /* ------------------- formulaire PDF du fournisseur --------------------
+   * Le PDF d'origine est un formulaire remplissable dont chaque champ porte
+   * le numero de reference du vin. On le remplit donc directement, dans le
+   * navigateur : rien ne transite par le serveur, et les champs restent
+   * modifiables a la main apres coup.
+   */
+  var pdfLibPret = null;
+
+  // Les six lieux du formulaire Schenk, dans l'ordre exact des boutons radio
+  // du PDF : Choix1 est le premier de la liste imprimee, et ainsi de suite.
+  var LIEUX = [
+    { v: 'Choix1', nom: 'Rolle', qui: 'Schenk Suisse S.A.', ou: 'Chemin du Grand Cru 7 — 1180 Rolle' },
+    { v: 'Choix2', nom: 'Vevey', qui: 'Obrist S.A.', ou: 'Av. Reller 26 — 1800 Vevey' },
+    { v: 'Choix3', nom: 'Waltenschwil', qui: 'Obrist S.A.', ou: 'Hagmattstrasse 1 — 5622 Waltenschwil' },
+    { v: 'Choix4', nom: 'Chamoson', qui: 'Cave St-Pierre S.A.', ou: 'Rue de Ravanay 1 — 1955 Chamoson' },
+    { v: 'Choix5', nom: 'Sion', qui: 'Domaine du Mont d’Or', ou: 'Rue de Savoie 64 — 1951 Sion' },
+    { v: 'Choix6', nom: 'Penthalaz', qui: 'Planzer Transport SA', ou: 'Chemin de l’Islettaz 2 — 1305 Penthalaz' }
+  ];
+  var LS_LIEU = 'noel2026.lieu';
+
+  function lieuChoisi() {
+    var c = document.querySelector('#pdf-lieux input[name="lieu"]:checked');
+    return c ? c.value : '';
+  }
+
+  function ouvrirChoixLieu() {
+    if (!aggregate().length) { $('reset-msg').textContent = 'Aucune commande à reporter.'; return; }
+    var prec = '';
+    try { prec = localStorage.getItem(LS_LIEU) || ''; } catch (e) { /* stockage bloque */ }
+    $('pdf-lieux').innerHTML = LIEUX.map(function (l, i) {
+      var coche = prec ? (l.v === prec) : (i === 0);
+      return '<label class="lieu"><input type="radio" name="lieu" value="' + l.v + '"' +
+        (coche ? ' checked' : '') + '><span><b>' + esc(l.nom) + '</b>' +
+        esc(l.qui) + ' · ' + esc(l.ou) + '</span></label>';
+    }).join('');
+    $('pdf-panneau').classList.remove('hidden');
+    $('reset-msg').textContent = '';
+    $('pdf-panneau').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function chargerPdfLib() {
+    if (pdfLibPret) return pdfLibPret;
+    pdfLibPret = new Promise(function (ok, ko) {
+      if (window.PDFLib) return ok(window.PDFLib);
+      var t = document.createElement('script');
+      t.src = 'assets/pdf-lib.min.js';
+      t.onload = function () { window.PDFLib ? ok(window.PDFLib) : ko(new Error('pdf-lib illisible')); };
+      t.onerror = function () { ko(new Error('pdf-lib introuvable')); };
+      document.head.appendChild(t);
+    });
+    return pdfLibPret;
+  }
+
+  function dateDuJour() {
+    var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear();
+  }
+
+  function remplirPdf() {
+    var btn = $('btn-pdf-go'), texte = btn.textContent;
+    var agg = aggregate();
+    if (!agg.length) { $('reset-msg').textContent = 'Aucune commande à reporter.'; return; }
+
+    var lieu = lieuChoisi();
+    if (!lieu) { $('reset-msg').textContent = 'Choisissez un lieu d’enlèvement.'; return; }
+    try { localStorage.setItem(LS_LIEU, lieu); } catch (e) { /* stockage bloque */ }
+
+    btn.disabled = true; btn.textContent = 'Préparation…';
+    $('reset-msg').textContent = '';
+
+    Promise.all([chargerPdfLib(), fetch('assets/formulaire-fournisseur.pdf').then(function (r) {
+      if (!r.ok) throw new Error('formulaire PDF introuvable (' + r.status + ')');
+      return r.arrayBuffer();
+    })]).then(function (res) {
+      var PDFLib = res[0];
+      return PDFLib.PDFDocument.load(res[1]).then(function (doc) {
+        var form = doc.getForm();
+        var poses = 0, absentes = [];
+
+        agg.forEach(function (a) {
+          var n = a.bouteilles;                 // definitif : cartons + bouteilles confirmees
+          if (!n) return;
+          try { form.getTextField(String(a.ref)).setText(String(n)); poses++; }
+          catch (e) { absentes.push(a.ref); }   // reference hors du formulaire d'origine
+        });
+
+        // Lieu d'enlèvement : un seul pour toute la commande groupée.
+        try { form.getRadioGroup('Groupe1').select(lieu); }
+        catch (e) { absentes.push('lieu d’enlèvement'); }
+
+        var meta = { 'Date': dateDuJour() };   // Nom et Tél : à compléter à la main
+        Object.keys(meta).forEach(function (k) {
+          if (!meta[k]) return;
+          try { form.getTextField(k).setText(meta[k]); } catch (e) { /* champ absent */ }
+        });
+
+        // On ne fige pas le formulaire : il reste corrigeable a la main.
+        return doc.save().then(function (octets) {
+          var nom = 'commande-' + ('noel-2026')
+            .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '.pdf';
+          telecharger(new Blob([octets], { type: 'application/pdf' }), nom);
+          var l = LIEUX.filter(function (x) { return x.v === lieu; })[0];
+          $('pdf-panneau').classList.add('hidden');
+          $('reset-msg').textContent = poses + ' référence(s) reportée(s), enlèvement à ' +
+            (l ? l.nom : lieu) + '.' +
+            (absentes.length ? ' Non trouvées dans le PDF : ' + absentes.join(', ') + '.' : '');
+        });
+      });
+    }).catch(function (e) {
+      $('reset-msg').textContent = 'Échec : ' + e.message;
+    }).then(function () {
+      btn.disabled = false; btn.textContent = texte;
+    });
+  }
+
   function htmlAgg(agg, tc, tb, tht, tttc) {
     var h = '<div class="note" style="margin-bottom:12px">Formulaire à transmettre à ' + esc(CFG.contact) +
       ' — la colonne <b>Nbre de BTES</b> reprend la logique du formulaire Schenk. ' +
@@ -992,7 +1108,11 @@
         return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
       }).join(';');
     }).join('\r\n');
-    var blob = new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8' });
+    telecharger(new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8' }), name);
+  }
+
+  // Telechargement d'un blob, partage par le CSV et le bon de commande PDF.
+  function telecharger(blob, name) {
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = name;
@@ -1186,6 +1306,11 @@
       }
     });
 
+    $('btn-pdf').addEventListener('click', ouvrirChoixLieu);
+    $('btn-pdf-go').addEventListener('click', remplirPdf);
+    $('btn-pdf-annuler').addEventListener('click', function () {
+      $('pdf-panneau').classList.add('hidden');
+    });
     $('btn-csv-agg').addEventListener('click', csvAgg);
     $('btn-csv-det').addEventListener('click', csvDet);
     $('btn-print-admin').addEventListener('click', function () { window.print(); });

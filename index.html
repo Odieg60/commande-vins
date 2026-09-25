@@ -175,12 +175,25 @@
             <small id="admin-sub"></small>
           </div>
           <button class="ghost no-print" id="btn-refresh">Rafraîchir</button>
+          <button class="primary no-print" id="btn-pdf" title="Remplit le bon de commande officiel du fournisseur avec les quantités commandées">Remplir le bon de commande</button>
           <button class="ghost no-print" id="btn-csv-agg">CSV agrégé</button>
           <button class="ghost no-print" id="btn-csv-det">CSV détaillé</button>
           <button class="ghost no-print" id="btn-print-admin">Imprimer / PDF</button>
           <button class="ghost no-print hidden" id="btn-reset" title="Supprime les commandes et le brouillon stockés dans ce navigateur">Vider les données locales</button>
         </div>
         <div class="field-err no-print" id="reset-msg"></div>
+
+        <div class="choix-lieu hidden no-print" id="pdf-panneau">
+          <b>Où retirez-vous la commande ?</b>
+          <p class="muted" style="margin:4px 0 10px">Le bon de commande du fournisseur demande un seul
+            lieu pour l'ensemble de la commande groupée. Enlèvement du 12.10 au 13.11.2026, sur préavis
+            de 72 h minimum.</p>
+          <div id="pdf-lieux"></div>
+          <div class="actions">
+            <button class="primary" id="btn-pdf-go">Générer le bon de commande</button>
+            <button class="ghost" id="btn-pdf-annuler">Annuler</button>
+          </div>
+        </div>
         <div class="tabs" style="margin-top:14px">
           <button class="on" data-tab="agg">Formulaire agrégé</button>
           <button data-tab="people">Par personne</button>
