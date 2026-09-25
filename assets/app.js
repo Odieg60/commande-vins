@@ -272,6 +272,12 @@
       return this.post({ action: 'list', user: user, pass: pass });
     },
 
+    // Correction admin d'une commande existante (cartons seulement).
+    majCommande: function (user, pass, id, lignes) {
+      if (!this.remote()) return Promise.resolve({ ok: false, error: 'Indisponible en mode local.' });
+      return this.post({ action: 'majCommande', user: user, pass: pass, commande: id, lignes: lignes });
+    },
+
     localAll: function () {
       // (mode local uniquement)
       try { return JSON.parse(localStorage.getItem(LS_ORDERS) || '[]'); } catch (e) { return []; }
@@ -741,6 +747,7 @@
 
   /* ------------------------------- admin --------------------------------- */
   var adminData = [], adminTab = 'agg';
+  var editCmd = '';                 // commande en cours de correction dans l'admin
 
   function adminLogin() {
     var u = $('a-user').value.trim(), p = $('a-pass').value;
@@ -906,12 +913,31 @@
         '<td class="num">' + ls.reduce(function (n, l) { return n + l.bouteilles + l.confirmees; }, 0) + '</td>' +
         '<td class="num"><b>' + nf.format(t) + '</b></td>' +
         '<td class="num att">' + (att ? '(' + nf.format(att) + ')' : '—') + '</td></tr>';
+
+      // Correction des cartons : une commande a la fois, pour qu'on voie
+      // clairement ce qu'on est en train de toucher.
+      var enEdition = (editCmd === o.id);
+      if (Store.remote()) {
+        h += '<tr class="no-print"><td></td><td colspan="6">' + (enEdition
+          ? '<span class="corr-actions"><button class="primary mini" data-save="' + esc(o.id) + '">Enregistrer</button>' +
+            '<button class="ghost mini" data-cancel="1">Annuler</button>' +
+            '<span class="wine-meta">Cartons uniquement. Zéro retire la ligne. ' +
+            'Aucun e-mail n’est envoyé à la personne.</span></span>'
+          : '<button class="ghost mini" data-edit="' + esc(o.id) + '">Corriger les cartons</button>') +
+          '</td></tr>';
+      }
+
       ls.forEach(function (l) {
         var enAttente = l.seules - l.confirmees;
-        h += '<tr><td></td><td colspan="2" class="wine-meta">' + esc(l.ref + ' — ' + l.nom + ' (' + l.cl + ', ' + l.mill + ')') +
+        h += '<tr' + (enEdition ? ' data-l="' + esc(l.ref) + '"' : '') + '><td></td><td colspan="2" class="wine-meta">' +
+          esc(l.ref + ' — ' + l.nom + ' (' + l.cl + ', ' + l.mill + ')') +
           (l.seules ? ' · ' + l.seules + ' bt. hors carton' +
             (enAttente ? ' dont ' + enAttente + ' en attente' : ' confirmée(s)') : '') + '</td>' +
-          '<td class="num wine-meta">' + l.cartons + '</td>' +
+          (enEdition
+            ? '<td class="num"><span class="stepper"><button type="button" data-c="-">−</button>' +
+              '<input type="number" min="0" max="999" step="1" value="' + l.cartons + '" data-corr>' +
+              '<button type="button" data-c="+">+</button></span></td>'
+            : '<td class="num wine-meta">' + l.cartons + '</td>') +
           '<td class="num wine-meta">' + (l.bouteilles + l.confirmees) + '</td>' +
           '<td class="num wine-meta">' + nf.format(ttc(l.prix_ht) * (l.bouteilles + l.confirmees)) + '</td>' +
           '<td class="num wine-meta att">' + (enAttente ? '(' + nf.format(ttc(l.prix_ht) * enAttente) + ')' : '') + '</td></tr>';
@@ -1119,6 +1145,47 @@
       show(1);
     });
     $('btn-refresh').addEventListener('click', adminRefresh);
+    // correction des cartons, depuis l'onglet « Par personne »
+    $('admin-content').addEventListener('click', function (ev) {
+      var b = ev.target.closest('button');
+      if (!b) return;
+
+      if (b.dataset.edit) { editCmd = b.dataset.edit; renderAdmin(); return; }
+      if (b.dataset.cancel) { editCmd = ''; renderAdmin(); return; }
+
+      if (b.dataset.c) {                       // plus / moins sur un stepper
+        var i = b.closest('tr').querySelector('input[data-corr]');
+        if (!i) return;
+        i.value = Math.max(0, Math.min(999, (parseInt(i.value, 10) || 0) + (b.dataset.c === '+' ? 1 : -1)));
+        return;
+      }
+
+      if (b.dataset.save) {
+        var lignes = [];
+        Array.prototype.forEach.call($('admin-content').querySelectorAll('tr[data-l]'), function (tr) {
+          var inp = tr.querySelector('input[data-corr]');
+          if (inp) lignes.push({ ref: tr.dataset.l, cartons: parseInt(inp.value, 10) || 0 });
+        });
+        var a = JSON.parse(sessionStorage.getItem('noel2026.admin') || '{}');
+        b.disabled = true; b.textContent = 'Enregistrement…';
+        Store.majCommande(a.u, a.p, b.dataset.save, lignes).then(function (r) {
+          if (!r || !r.ok) {
+            $('reset-msg').textContent = (r && r.error) || 'Échec de la correction.';
+            b.disabled = false; b.textContent = 'Enregistrer';
+            return;
+          }
+          $('reset-msg').textContent = r.supprimee
+            ? 'Commande ' + b.dataset.save + ' vidée et supprimée.'
+            : r.modifiees + ' ligne(s) corrigée(s) sur ' + b.dataset.save + '.';
+          editCmd = '';
+          adminRefresh();
+        }).catch(function (e) {
+          $('reset-msg').textContent = 'Erreur réseau : ' + e.message;
+          b.disabled = false; b.textContent = 'Enregistrer';
+        });
+      }
+    });
+
     $('btn-csv-agg').addEventListener('click', csvAgg);
     $('btn-csv-det').addEventListener('click', csvDet);
     $('btn-print-admin').addEventListener('click', function () { window.print(); });
@@ -1126,7 +1193,7 @@
     $('btn-reset').addEventListener('click', resetLocal);
     document.querySelector('.tabs').addEventListener('click', function (ev) {
       var b = ev.target.closest('button[data-tab]');
-      if (b) { adminTab = b.dataset.tab; $('reset-msg').textContent = ''; renderAdmin(); }
+      if (b) { adminTab = b.dataset.tab; $('reset-msg').textContent = ''; editCmd = ''; renderAdmin(); }
     });
   }
 

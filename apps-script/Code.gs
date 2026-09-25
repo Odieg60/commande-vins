@@ -118,6 +118,7 @@ function doPost(e) {
       case 'list': return json_(list_(body.user, body.pass));
       case 'check': return json_(checkCode_(body.code));
       case 'etat': return json_(etat_(body.code));
+      case 'majCommande': return json_(majCommande_(body.user, body.pass, body.commande, body.lignes));
       default: return json_({ ok: false, error: 'Action inconnue.' });
     }
   } catch (err) {
@@ -666,6 +667,115 @@ function notify_(c, alloc) {
 }
 
 /* ----------------------------------------------------------------- lecture */
+
+/**
+ * Correction d'une commande deja validee, depuis l'espace admin.
+ *
+ * Volontairement limitee aux CARTONS des references deja presentes dans la
+ * commande. Toucher aux bouteilles seules pourrait rouvrir un carton boucle
+ * chez un tiers qui a deja recu un e-mail lui demandant de payer son
+ * complement : cet e-mail-la, on ne peut pas le rappeler.
+ *
+ * Aucun e-mail n'est envoye au participant : la correction est silencieuse,
+ * c'est a l'organisateur de le prevenir.
+ */
+function majCommande_(user, pass, id, lignes) {
+  var err = checkAdmin_(user, pass);
+  if (err) return { ok: false, error: err };
+
+  id = String(id || '').trim();
+  if (!id) return { ok: false, error: 'Commande absente.' };
+  if (!lignes || !lignes.length) return { ok: false, error: 'Aucun changement.' };
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    var shL = tab_(SHEET_LINES, HEAD_LINES);
+    var shO = tab_(SHEET_ORDERS, HEAD_ORDERS);
+
+    var l = shL.getDataRange().getValues();
+    var parRef = {};
+    for (var i = 1; i < l.length; i++) {
+      if (String(l[i][L_ID]) !== id) continue;
+      parRef[String(l[i][L_REF])] = { row: i + 1, data: l[i] };
+    }
+    if (!Object.keys(parRef).length) return { ok: false, error: 'Commande introuvable.' };
+
+    // On valide tout avant d'ecrire quoi que ce soit.
+    var maj = [];
+    for (var k = 0; k < lignes.length; k++) {
+      var d = lignes[k] || {};
+      var e = parRef[String(d.ref)];
+      if (!e) return { ok: false, error: 'Reference absente de cette commande (' + d.ref + ').' };
+      var n = Math.floor(Number(d.cartons));
+      if (!isFinite(n) || n < 0) return { ok: false, error: 'Quantite invalide sur la ref. ' + d.ref + '.' };
+      if (n > 999) return { ok: false, error: 'Quantite trop grande sur la ref. ' + d.ref + '.' };
+      if (n !== (Number(e.data[L_CARTONS]) || 0)) maj.push({ e: e, n: n });
+    }
+    if (!maj.length) return { ok: false, error: 'Aucun changement.' };
+
+    // Mises a jour d'abord, suppressions ensuite et de bas en haut, sinon les
+    // numeros de ligne glissent sous nos pieds.
+    var aSupprimer = [];
+    maj.forEach(function (m) {
+      var btl = Number(m.e.data[L_BTL]) || 0;
+      var seules = Number(m.e.data[L_SEULES]) || 0;
+      if (m.n === 0 && seules === 0) { aSupprimer.push(m.e.row); return; }
+      var bout = m.n * btl;
+      var prix = Number(m.e.data[L_PRIX]) || 0;
+      shL.getRange(m.e.row, L_CARTONS + 1).setValue(m.n);
+      shL.getRange(m.e.row, L_BOUT + 1).setValue(bout);
+      shL.getRange(m.e.row, L_THT + 1).setValue(Math.round(prix * bout * 100) / 100);
+      shL.getRange(m.e.row, L_TTTC + 1).setValue(Math.round(ttc_(prix) * bout * 100) / 100);
+    });
+    aSupprimer.sort(function (a, b) { return b - a; }).forEach(function (r) { shL.deleteRow(r); });
+
+    // Recompte depuis la feuille, seule source de verite apres coup.
+    var t = { cartons: 0, bouteilles: 0, seules: 0, refs: 0, ht: 0, ttc: 0 };
+    var l2 = shL.getDataRange().getValues();
+    for (var j = 1; j < l2.length; j++) {
+      if (String(l2[j][L_ID]) !== id) continue;
+      var cart = Number(l2[j][L_CARTONS]) || 0;
+      var bout2 = Number(l2[j][L_BOUT]) || 0;
+      var conf = Number(l2[j][L_CONF]) || 0;
+      var prix2 = Number(l2[j][L_PRIX]) || 0;
+      t.refs++;
+      t.cartons += cart;
+      t.bouteilles += bout2;
+      t.seules += Number(l2[j][L_SEULES]) || 0;
+      t.ht += prix2 * (bout2 + conf);
+      t.ttc += ttc_(prix2) * (bout2 + conf);
+    }
+
+    // Ligne de l'onglet Commandes : mise a jour, ou suppression si plus rien.
+    var o = shO.getDataRange().getValues();
+    var ligneO = 0;
+    for (var m2 = 1; m2 < o.length; m2++) {
+      if (String(o[m2][O_ID]) === id) { ligneO = m2 + 1; break; }
+    }
+    if (!t.refs) {
+      if (ligneO) shO.deleteRow(ligneO);
+      majAttente_(shL, shO);
+      return { ok: true, id: id, supprimee: true, modifiees: maj.length };
+    }
+    if (ligneO) {
+      shO.getRange(ligneO, 7).setValue(t.cartons);                       // Cartons
+      shO.getRange(ligneO, 8).setValue(t.bouteilles);                    // Bouteilles (cartons)
+      shO.getRange(ligneO, 9).setValue(Math.round(t.ht * 100) / 100);    // Total HT
+      shO.getRange(ligneO, O_TTC + 1).setValue(Math.round(t.ttc * 100) / 100);
+      shO.getRange(ligneO, 12).setValue(t.refs);                         // References
+      shO.getRange(ligneO, 13).setValue(t.seules);                       // Bouteilles seules
+    }
+    majAttente_(shL, shO);
+
+    return {
+      ok: true, id: id, supprimee: false, modifiees: maj.length,
+      total_ttc: Math.round(t.ttc * 100) / 100
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 function list_(user, pass) {
   var err = checkAdmin_(user, pass);

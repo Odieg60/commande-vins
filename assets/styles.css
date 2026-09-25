@@ -258,3 +258,9 @@ tfoot tr.att td { border-top: 1px solid var(--line); font-weight: 600; color: va
   /* fond orange clair en sombre : le texte du bouton doit rester lisible */
   button.mini { color: #17151a; }
 }
+
+/* barre de correction d'une commande, dans l'onglet « Par personne » */
+.corr-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.corr-actions .wine-meta { flex: 1 1 260px; }
+tr[data-l] { background: var(--accent-soft); }
+tr[data-l] .stepper input { width: 46px; }
